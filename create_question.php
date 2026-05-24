@@ -49,44 +49,187 @@ function getQuestionTypeName($type) {
         <?php include('includes/app_includes.php'); ?>
         <style>
             :root {
-                --theme-primary: #0d6efd;
-                --theme-primary-hover: #0b5ed7;
-                --theme-primary-light: #e7f1ff;
+                --theme-primary: #39868a;
+                --theme-primary-hover: #2b686c;
+                --theme-primary-light: #eaf4f4;
+                --theme-primary-gradient: linear-gradient(135deg, #39868a 0%, #2b9ba1 100%);
+                --theme-accent: #f0a500;
+                --theme-success: #27ae60;
+                --theme-success-light: #d5f0e3;
             }
-            .asterisk { color: var(--theme-primary); }
-            .form-label { font-weight: 500; }
-            .correct-answer { border-color: #28a745 !important; background-color: #d4edda; }
-            .question-card { border-left: 4px solid var(--theme-primary); }
-            .option-item { transition: all 0.2s; }
-            .option-item:hover { background-color: #f8f9fa; }
-            .radio-custom, .checkbox-custom { transform: scale(1.2); }
-            .type-single-choice, .type-multiple-choice { display: none; }
-            .type-true-false { display: none; }
-            .type-text-answer, .type-textarea { display: none; }
-            .type-image-based { display: none; }
-            #image_preview_container img, #current_image_container img { border: 2px dashed #dee2e6; padding: 4px; border-radius: 8px; }
-            .img-opt-item.correct-answer { border-color: #28a745 !important; background-color: #d4edda; }
-            .show-section { display: block; }
-            .checkbox-item { transition: all 0.2s; }
-            .checkbox-item:hover { background-color: #f8f9fa; }
-            .checkbox-item.checked { background-color: #d4edda; border-color: #28a745; }
-            .question-item { cursor: pointer; transition: all 0.2s; }
-            .question-item:hover { background-color: #f8f9fa; }
-            .question-item.active { background-color: var(--theme-primary-light); border-left: 3px solid var(--theme-primary); }
-            .list-group-item { border-left: none; border-right: none; }
-            .list-group-item:first-child { border-top: none; }
-            .list-group-item:last-child { border-bottom: none; }
-            .type-select-btn { border-radius: 8px !important; border: 1px solid var(--theme-primary) !important; color: var(--theme-primary) !important; }
-            .type-select-btn.active { background-color: var(--theme-primary) !important; color: white !important; border-color: var(--theme-primary) !important; }
-            .type-select-btn:hover { background-color: var(--theme-primary-light) !important; transform: translateX(5px); }
-            .btn-primary { background-color: var(--theme-primary); border-color: var(--theme-primary); }
-            .btn-primary:hover { background-color: var(--theme-primary-hover); border-color: var(--theme-primary-hover); }
-            .card-header.bg-primary { background-color: var(--theme-primary) !important; }
-            .badge.bg-primary { background-color: var(--theme-primary) !important; }
-            .btn-outline-primary { color: var(--theme-primary) !important; border-color: var(--theme-primary) !important; }
-            .btn-outline-primary:hover { background-color: var(--theme-primary) !important; color: white !important; }
-            .bg-primary { background-color: var(--theme-primary) !important; }
+
+            /* ── Global overrides ───────────────────────────── */
+            body { background-color: #f4f7f8; }
+            .asterisk { color: var(--theme-primary); font-weight: 700; }
+            .form-label { font-weight: 600; color: #39868a; font-size: 0.85rem; letter-spacing: 0.03em; text-transform: uppercase; }
+            .form-control:focus { border-color: var(--theme-primary); box-shadow: 0 0 0 0.2rem rgba(57,134,138,.18); }
+            .form-check-input:checked { background-color: var(--theme-primary); border-color: var(--theme-primary); }
+
+            /* ── Card chrome ────────────────────────────────── */
+            .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(57,134,138,.10); }
+            .card-header {
+                background: var(--theme-primary-gradient) !important;
+                color: #fff !important;
+                border-radius: 12px 12px 0 0 !important;
+                padding: 14px 20px;
+            }
+            .card-header h5 { font-size: 1rem; font-weight: 700; letter-spacing: 0.02em; }
+            .question-card { border-top: 3px solid var(--theme-primary); }
+
+            /* ── Stats bar ──────────────────────────────────── */
+            .stats-bar {
+                background: var(--theme-primary-light);
+                border: 1.5px solid #b2d8da;
+                border-radius: 10px;
+                padding: 10px 0;
+            }
+            .stats-bar .stat-item { border-right: 1px solid #c5e1e2; padding: 4px 12px; }
+            .stats-bar .stat-item:last-child { border-right: none; }
+            .stats-bar .stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #5a9ea2; font-weight: 600; }
+            .stats-bar .stat-value { font-size: 1.15rem; font-weight: 800; color: var(--theme-primary); }
+            .stats-bar .stat-value.danger  { color: #e74c3c; }
+            .stats-bar .stat-value.success { color: var(--theme-success); }
+            .stats-bar .stat-value.warn    { color: var(--theme-accent); }
+
+            /* ── Marks banner ───────────────────────────────── */
+            #marks_limit_banner {
+                border-radius: 10px;
+                border-left: 5px solid #c0392b;
+                background: #fdf0ee;
+                color: #922b21;
+            }
+
+            /* ── Question type buttons ──────────────────────── */
+            .type-select-btn {
+                border-radius: 10px !important;
+                border: 1.5px solid #b2d8da !important;
+                color: var(--theme-primary) !important;
+                background: #fff !important;
+                transition: all 0.22s ease !important;
+                box-shadow: 0 1px 4px rgba(57,134,138,.07);
+            }
+            .type-select-btn:hover:not(:disabled) {
+                background: var(--theme-primary-light) !important;
+                border-color: var(--theme-primary) !important;
+                transform: translateX(6px);
+                box-shadow: 0 3px 10px rgba(57,134,138,.18) !important;
+            }
+            .type-select-btn.active {
+                background: var(--theme-primary-gradient) !important;
+                color: #fff !important;
+                border-color: var(--theme-primary) !important;
+                box-shadow: 0 4px 14px rgba(57,134,138,.30) !important;
+                transform: translateX(4px);
+            }
+            .type-select-btn .ti { font-size: 1.3rem; }
+            .type-select-btn strong { font-size: 0.92rem; }
+            .type-select-btn small { font-size: 0.75rem; }
+
+            /* ── Options / checkboxes ───────────────────────── */
+            .option-item, .checkbox-item { transition: all 0.2s; border-radius: 8px; }
+            .option-item:hover, .checkbox-item:hover { background-color: var(--theme-primary-light); }
+            .input-group-text { background-color: var(--theme-primary-light); border-color: #b2d8da; color: var(--theme-primary); }
+            .radio-custom, .checkbox-custom { transform: scale(1.25); accent-color: var(--theme-primary); }
+            .correct-answer { border-color: var(--theme-success) !important; background-color: var(--theme-success-light) !important; }
+            .img-opt-item.correct-answer { border-color: var(--theme-success) !important; background-color: var(--theme-success-light) !important; }
+            .checkbox-item.checked { background-color: var(--theme-success-light); border-color: var(--theme-success); border-radius: 8px; }
+
+            /* ── Image preview ──────────────────────────────── */
+            #image_preview_container img,
+            #current_image_container img {
+                border: 2px dashed var(--theme-primary);
+                padding: 6px;
+                border-radius: 10px;
+                background: var(--theme-primary-light);
+            }
+
+            /* ── Buttons ────────────────────────────────────── */
+            .btn-primary {
+                background: var(--theme-primary-gradient) !important;
+                border-color: var(--theme-primary) !important;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                border-radius: 8px !important;
+                box-shadow: 0 2px 8px rgba(57,134,138,.25);
+                transition: all 0.2s;
+            }
+            .btn-primary:hover:not(:disabled) {
+                background: linear-gradient(135deg, #2b686c 0%, #39868a 100%) !important;
+                box-shadow: 0 4px 14px rgba(57,134,138,.35) !important;
+                transform: translateY(-1px);
+            }
+            .btn-success {
+                background: linear-gradient(135deg, #219653 0%, #27ae60 100%) !important;
+                border-color: var(--theme-success) !important;
+                font-weight: 600;
+                border-radius: 8px !important;
+            }
+            .btn-secondary { border-radius: 8px !important; font-weight: 600; }
+            .btn-outline-light { border-radius: 7px !important; font-weight: 600; font-size: 0.82rem; }
+            .btn-outline-primary {
+                color: var(--theme-primary) !important;
+                border-color: var(--theme-primary) !important;
+                border-radius: 8px !important;
+            }
+            .btn-outline-primary:hover {
+                background-color: var(--theme-primary) !important;
+                color: white !important;
+            }
+            .btn-sm.btn-primary  { box-shadow: none; transform: none; }
+            .btn-sm.btn-danger   { border-radius: 7px !important; }
+
+            /* ── Badges (per question type) ─────────────────── */
+            .badge-type-1  { background: #39868a !important; }         /* Single Choice – teal */
+            .badge-type-2  { background: #8e44ad !important; }         /* True/False – purple */
+            .badge-type-3  { background: #2980b9 !important; }         /* Multiple – blue */
+            .badge-type-4  { background: #d35400 !important; }         /* Text Answer – orange */
+            .badge-type-5  { background: #c0392b !important; }         /* Image-based – red */
+            .badge { border-radius: 6px !important; font-size: 0.72rem; padding: 4px 9px; font-weight: 600; letter-spacing: 0.03em; }
+
+            /* ── Table ──────────────────────────────────────── */
+            .table thead th {
+                background: var(--theme-primary-light);
+                color: var(--theme-primary);
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                font-weight: 700;
+                border-bottom: 2px solid #b2d8da;
+            }
+            .table-hover tbody tr:hover { background-color: var(--theme-primary-light); }
+            .table tbody td { vertical-align: middle; font-size: 0.9rem; }
+
+            /* ── Misc utility overrides ─────────────────────── */
+            .bg-primary  { background: var(--theme-primary-gradient) !important; }
             .text-primary { color: var(--theme-primary) !important; }
+            .badge.bg-primary { background-color: var(--theme-primary) !important; }
+
+            /* visibility helpers (unchanged) */
+            .type-single-choice, .type-multiple-choice { display: none; }
+            .type-true-false    { display: none; }
+            .type-text-answer, .type-textarea { display: none; }
+            .type-image-based   { display: none; }
+            .show-section       { display: block; }
+
+            /* True/False styled cards */
+            .tf-option {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 16px;
+                border: 1.5px solid #b2d8da;
+                border-radius: 9px;
+                cursor: pointer;
+                transition: all 0.2s;
+                background: #fff;
+                font-weight: 600;
+                color: #444;
+            }
+            .tf-option:hover { background: var(--theme-primary-light); border-color: var(--theme-primary); }
+            .tf-option input[type="radio"] { accent-color: var(--theme-primary); transform: scale(1.25); }
+
+            /* Page title area */
+            .page-title-box h4 { color: var(--theme-primary); font-weight: 700; }
         </style>
     </head>
 
@@ -129,7 +272,7 @@ function getQuestionTypeName($type) {
                             <!-- Left Side: Question Type Selection -->
                             <div class="col-lg-4">
                                 <div class="card shadow-sm h-100">
-                                    <div class="card-header" style="background-color: var(--theme-primary); color: white;">
+                                    <div class="card-header" >
                                         <div class="d-flex justify-content-between align-items-center">
                                             <h5 class="card-title mb-0">
                                                 <i class="ti ti-apps me-1"></i> Question Types
@@ -195,36 +338,35 @@ function getQuestionTypeName($type) {
                             <!-- Right Side: Question Form -->
                             <div class="col-lg-8">
                                 <div class="card question-card shadow-sm">
-                                    <div class="card-header" style="background-color: var(--theme-primary); color: white;">
+                                    <div class="card-header" >
                                         <h5 class="card-title mb-0" id="formTitle">
                                             <i class="ti ti-plus me-1"></i> Add New Question
                                         </h5>
                                     </div>
                                     <div class="card-body">
-                                        <div class="alert alert-primary mb-3 py-2" style="background-color: var(--theme-primary-light); border-color: var(--theme-primary); color: var(--theme-primary);">
-                                            <div class="row text-center">
-                                                <div class="col">
-                                                    <strong>Total Marks:</strong> <?php echo htmlspecialchars($assessment['marks']); ?>
+                                        <div class="stats-bar mb-3">
+                                            <div class="row text-center g-0">
+                                                <div class="col stat-item">
+                                                    <div class="stat-label"><i class="ti ti-star me-1"></i>Total Marks</div>
+                                                    <div class="stat-value"><?php echo htmlspecialchars($assessment['marks']); ?></div>
                                                 </div>
-                                                <div class="col">
-                                                    <strong>Duration:</strong> <?php echo htmlspecialchars($assessment['duration']); ?>
+                                                <div class="col stat-item">
+                                                    <div class="stat-label"><i class="ti ti-clock me-1"></i>Duration</div>
+                                                    <div class="stat-value"><?php echo htmlspecialchars($assessment['duration']); ?></div>
                                                 </div>
-                                                <div class="col">
-                                                    <strong>Questions:</strong> <?php echo count($questions); ?>
+                                                <div class="col stat-item">
+                                                    <div class="stat-label"><i class="ti ti-list-numbers me-1"></i>Questions</div>
+                                                    <div class="stat-value"><?php echo count($questions); ?></div>
                                                 </div>
-                                                <div class="col">
-                                                    <strong>Added Marks:</strong>
-                                                    <span id="added_marks_display" class="fw-bold">
-                                                        <?php echo intval($totalQuestionsMarks); ?>
-                                                    </span>
+                                                <div class="col stat-item">
+                                                    <div class="stat-label"><i class="ti ti-check me-1"></i>Added Marks</div>
+                                                    <div class="stat-value" id="added_marks_display"><?php echo intval($totalQuestionsMarks); ?></div>
                                                 </div>
-                                                <div class="col">
-                                                    <strong>Remaining Marks:</strong>
+                                                <div class="col stat-item">
                                                     <?php $remaining = intval($assessment['marks']) - intval($totalQuestionsMarks); ?>
-                                                    <span id="remaining_marks_display"
-                                                          class="fw-bold <?php echo $remaining <= 0 ? 'text-success' : 'text-danger'; ?>">
-                                                        <?php echo $remaining; ?>
-                                                    </span>
+                                                    <div class="stat-label"><i class="ti ti-adjustments me-1"></i>Remaining</div>
+                                                    <div class="stat-value <?php echo $remaining <= 0 ? 'success' : ($remaining <= 3 ? 'warn' : 'danger'); ?>"
+                                                         id="remaining_marks_display"><?php echo $remaining; ?></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -284,19 +426,15 @@ function getQuestionTypeName($type) {
                                             <!-- True/False Options -->
                                             <div class="mb-3 type-true-false" id="section_tf">
                                                 <label class="form-label">Correct Answer <span class="asterisk">*</span></label>
-                                                <div class="row">
-                                                    <div class="col-md-3">
-                                                        <div class="form-check">
-                                                            <input class="form-check-input" type="radio" name="correct_option_tf" id="tf_true" value="True">
-                                                            <label class="form-check-label" for="tf_true">True</label>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-md-3">
-                                                        <div class="form-check">
-                                                            <input class="form-check-input" type="radio" name="correct_option_tf" id="tf_false" value="False">
-                                                            <label class="form-check-label" for="tf_false">False</label>
-                                                        </div>
-                                                    </div>
+                                                <div class="d-flex gap-3">
+                                                    <label class="tf-option flex-fill justify-content-center" for="tf_true">
+                                                        <input class="form-check-input m-0" type="radio" name="correct_option_tf" id="tf_true" value="True">
+                                                        <i class="ti ti-circle-check text-success fs-5"></i> True
+                                                    </label>
+                                                    <label class="tf-option flex-fill justify-content-center" for="tf_false">
+                                                        <input class="form-check-input m-0" type="radio" name="correct_option_tf" id="tf_false" value="False">
+                                                        <i class="ti ti-circle-x text-danger fs-5"></i> False
+                                                    </label>
                                                 </div>
                                             </div>
                                             
@@ -422,7 +560,7 @@ function getQuestionTypeName($type) {
                             <!-- Bottom Section: Questions List -->
                             <div class="col-lg-12 mt-4">
                                 <div class="card shadow-sm">
-                                    <div class="card-header" style="background-color: var(--theme-primary); color: white;">
+                                    <div class="card-header" >
                                         <h5 class="card-title mb-0">
                                             <i class="ti ti-list me-1"></i> All Questions (<?php echo count($questions); ?>)
                                         </h5>
@@ -445,7 +583,7 @@ function getQuestionTypeName($type) {
                                                     <?php foreach($questions as $index => $q): ?>
                                                     <tr>
                                                         <td><?php echo $index + 1; ?></td>
-                                                        <td><span class="badge" style="background-color: var(--theme-primary);"><?php echo getQuestionTypeName($q['question_type'] ?? 1); ?></span></td>
+                                                        <td><span class="badge badge-type-<?php echo intval($q['question_type'] ?? 1); ?>"><?php echo getQuestionTypeName($q['question_type'] ?? 1); ?></span></td>
                                                         <td class="text-wrap" style="width: 60%;"><?php echo htmlspecialchars($q['question_text']); ?></td>
                                                         <td class="text-wrap" style="width: 20%;">
                                                             <?php 
@@ -494,9 +632,9 @@ function getQuestionTypeName($type) {
                                         </div>
                                         <?php else: ?>
                                         <div class="text-center py-5">
-                                            <i class="ti ti-inbox fs-1 text-muted mb-3"></i>
-                                            <p class="text-muted mb-0">No questions added yet</p>
-                                            <small class="text-muted">Use the form above to add questions</small>
+                                            <i class="ti ti-inbox fs-1 mb-3" style="color: #b2d8da;"></i>
+                                            <p class="fw-600 mb-1" style="color: var(--theme-primary);">No questions added yet</p>
+                                            <small class="text-muted">Select a question type above and fill the form to get started</small>
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -518,7 +656,7 @@ function getQuestionTypeName($type) {
             var currentEditType = 1;
             
             function showToast(message, type) {
-                var bgColor = type === 'success' ? '#28a745' : '#dc3545';
+                var bgColor = type === 'success' ? '#39868a' : '#dc3545';
                 Toastify({
                     text: message,
                     duration: 3000,
@@ -675,10 +813,10 @@ function getQuestionTypeName($type) {
                 var displayRemaining = entered > 0 ? remaining : available;
                 var $disp = $('#remaining_marks_display');
                 $disp.text(displayRemaining);
-                $disp.removeClass('text-success text-danger text-warning');
-                if      (displayRemaining < 0)  $disp.addClass('text-danger');
-                else if (displayRemaining === 0) $disp.addClass('text-success');
-                else                             $disp.addClass('text-warning');
+                $disp.removeClass('danger success warn');
+                if      (displayRemaining < 0)  $disp.addClass('danger');
+                else if (displayRemaining === 0) $disp.addClass('success');
+                else                             $disp.addClass('warn');
 
                 // Clamp the input max
                 $('#question_marks').attr('max', available > 0 ? available : 0);
