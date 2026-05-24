@@ -1,0 +1,38 @@
+-- Add new columns to student_enrolments for PDF Enrolment Form (online)
+-- All columns are nullable so existing data and dashboard are unaffected.
+-- If you get "Duplicate column" error for any line, that column already exists - skip or comment that line.
+
+ALTER TABLE `student_enrolments`
+  ADD COLUMN `qualification_code_title` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `age_declaration_18` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `city_of_birth` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `postal_same_as_above` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `postal_address` TEXT DEFAULT NULL,
+  ADD COLUMN `english_read_write` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `work_phone` VARCHAR(50) DEFAULT NULL,
+  ADD COLUMN `home_phone` VARCHAR(50) DEFAULT NULL,
+  ADD COLUMN `year_completed_school` VARCHAR(20) DEFAULT NULL,
+  ADD COLUMN `mode_delivery` VARCHAR(100) DEFAULT NULL,
+  ADD COLUMN `qualification_attained` VARCHAR(50) DEFAULT NULL,
+  ADD COLUMN `industry_of_work` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `computer_access` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `computer_literacy` VARCHAR(20) DEFAULT NULL,
+  ADD COLUMN `numeracy_skills` VARCHAR(20) DEFAULT NULL,
+  ADD COLUMN `additional_support` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `additional_support_specify` TEXT DEFAULT NULL,
+  ADD COLUMN `usi_declaration` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `privacy_declaration` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `refund_declaration` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `office_student_id` VARCHAR(100) DEFAULT NULL,
+  ADD COLUMN `office_coordinator_name` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `office_invoice_provided` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `office_receipt_collected` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `office_lms_access` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `office_resources_access` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `office_uploaded_sms` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `office_welcome_pack_sent` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `candidate_declaration` TINYINT(1) DEFAULT NULL,
+  ADD COLUMN `candidate_full_name` VARCHAR(255) DEFAULT NULL,
+  ADD COLUMN `candidate_date` DATE DEFAULT NULL,
+  ADD COLUMN `candidate_signature` VARCHAR(500) DEFAULT NULL,
+  ADD COLUMN `form_source` VARCHAR(20) DEFAULT 'legacy';

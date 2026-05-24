@@ -1,0 +1,12 @@
+[27-Aug-2023 13:39:52 UTC] PHP Fatal error:  Uncaught TypeError: mysqli_fetch_all(): Argument #1 ($result) must be of type mysqli_result, bool given in /home/admin/public_html/auztraining/studentData.php:35
+Stack trace:
+#0 /home/admin/public_html/auztraining/studentData.php(35): mysqli_fetch_all()
+#1 {main}
+  thrown in /home/admin/public_html/auztraining/studentData.php on line 35
+[27-Aug-2023 13:40:47 UTC] PHP Fatal error:  Uncaught TypeError: mysqli_fetch_all(): Argument #1 ($result) must be of type mysqli_result, bool given in /home/admin/public_html/auztraining/studentData.php:35
+Stack trace:
+#0 /home/admin/public_html/auztraining/studentData.php(35): mysqli_fetch_all()
+#1 {main}
+  thrown in /home/admin/public_html/auztraining/studentData.php on line 35
+[11-Sep-2023 09:42:27 UTC] PHP Warning:  mysqli_connect(): (HY000/1045): Access denied for user 'admin_auztraining'@'localhost' (using password: YES) in /home/admin/public_html/auztraining/includes/dbconnect.php on line 3
+[11-Sep-2023 09:42:27 UTC] PHP Warning:  mysqli_connect(): (HY000/1045): Access denied for user 'admin_auztraining'@'localhost' (using password: YES) in /home/admin/public_html/auztraining/includes/dbconnect.php on line 3

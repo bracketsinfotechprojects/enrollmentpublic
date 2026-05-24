@@ -1,0 +1,4 @@
+
+<FilesMatch \.php$>
+        SetHandler proxy:fcgi://admin-php80
+</FilesMatch>
