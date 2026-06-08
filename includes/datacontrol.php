@@ -2386,6 +2386,16 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
         $photo_paths = json_encode($uploaded);
     }
 
+    // Signature image upload
+    $signature_image_val = '';
+    if (!empty($_FILES['signature_image']['tmp_name']) && is_uploaded_file($_FILES['signature_image']['tmp_name'])) {
+        $sig_ext   = strtolower(pathinfo($_FILES['signature_image']['name'], PATHINFO_EXTENSION));
+        $sig_uname = 'sig_' . rand(1000, 999999) . '_' . time() . '.' . $sig_ext;
+        if (move_uploaded_file($_FILES['signature_image']['tmp_name'], $uploadDir . $sig_uname)) {
+            $signature_image_val = $sig_uname;
+        }
+    }
+
     // Sanitize all fields
     $qualification_code_title    = mysqli_real_escape_string($connection, $d('qualification_code_title'));
     $usi_id                      = mysqli_real_escape_string($connection, $d('usi_id'));
@@ -2474,9 +2484,24 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
     $enquiry_id                  = mysqli_real_escape_string($connection, $d('enquiry_id'));
     $rto_name                    = mysqli_real_escape_string($connection, $d('rto_name'));
     $branch_name                 = mysqli_real_escape_string($connection, $d('branch_name'));
+    $student_user_id_val         = intval($_POST['student_user_id'] ?? 0);
 
     $dob_val   = $dob ? "'$dob'" : 'NULL';
     $cdate_val = $candidate_date ? "'$candidate_date'" : 'NULL';
+
+    // Add student_user_id column if missing
+    $col_chk = mysqli_query($connection, "SHOW COLUMNS FROM `enrolment_form_new` LIKE 'student_user_id'");
+    if ($col_chk && mysqli_num_rows($col_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `enrolment_form_new` ADD COLUMN `student_user_id` INT UNSIGNED DEFAULT NULL");
+    }
+
+    // Add signature_image column if missing
+    $sig_col_chk = mysqli_query($connection, "SHOW COLUMNS FROM `enrolment_form_new` LIKE 'signature_image'");
+    if ($sig_col_chk && mysqli_num_rows($sig_col_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `enrolment_form_new` ADD COLUMN `signature_image` VARCHAR(255) DEFAULT NULL");
+    }
+
+    $sig_img_esc = mysqli_real_escape_string($connection, $signature_image_val);
 
     $insert = "INSERT INTO enrolment_form_new (
         user_type, username,
@@ -2500,7 +2525,7 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
         office_coordinator_name, office_invoice_provided, office_receipt_collected,
         office_lms_access, office_resources_access, office_uploaded_sms, office_welcome_pack_sent,
         candidate_declaration, candidate_full_name, candidate_date, candidate_signature,
-        enquiry_id, rto_name, branch_name, photo_paths, updated_status
+        enquiry_id, rto_name, branch_name, photo_paths, updated_status, student_user_id, signature_image
     ) VALUES (
         '$user_type', '$username',
         '$qualification_code_title',
@@ -2523,7 +2548,7 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
         '$office_coordinator_name', $office_invoice_provided, $office_receipt_collected,
         $office_lms_access, $office_resources_access, $office_uploaded_sms, $office_welcome_pack_sent,
         $candidate_declaration, '$candidate_full_name', $cdate_val, '$candidate_signature',
-        '$enquiry_id', '$rto_name', '$branch_name', '$photo_paths', 'pending'
+        '$enquiry_id', '$rto_name', '$branch_name', '$photo_paths', 'pending', $student_user_id_val, '$sig_img_esc'
     )";
 
     if (!mysqli_query($connection, $insert)) {
@@ -2551,7 +2576,8 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
     ob_clean();
     header('Content-Type: application/json');
 
-    $enrolment_id_upd = intval($_POST['enrolment_id'] ?? 0);
+    $enrolment_id_upd    = intval($_POST['enrolment_id'] ?? 0);
+    $student_user_id_upd = intval($_POST['student_user_id'] ?? 0);
     if ($enrolment_id_upd <= 0) {
         echo json_encode(array('success' => false, 'message' => 'Invalid enrolment ID.'));
         exit;
@@ -2578,9 +2604,9 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
 
     // Photo upload — append new photos if any
     $photo_paths_upd = null;
+    $uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
+    if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
     if (!empty($_FILES['image']['name'][0])) {
-        $uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
-        if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
         $uploaded = array();
         foreach ($_FILES['image']['name'] as $k => $fileName) {
             $tmp = $_FILES['image']['tmp_name'][$k];
@@ -2590,6 +2616,16 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
             if (move_uploaded_file($tmp, $uploadDir . $uname)) $uploaded[] = $uname;
         }
         if (!empty($uploaded)) $photo_paths_upd = mysqli_real_escape_string($connection, json_encode($uploaded));
+    }
+
+    // Signature image upload — replace if new file provided
+    $signature_image_upd = null;
+    if (!empty($_FILES['signature_image']['tmp_name']) && is_uploaded_file($_FILES['signature_image']['tmp_name'])) {
+        $sig_ext   = strtolower(pathinfo($_FILES['signature_image']['name'], PATHINFO_EXTENSION));
+        $sig_uname = 'sig_' . rand(1000, 999999) . '_' . time() . '.' . $sig_ext;
+        if (move_uploaded_file($_FILES['signature_image']['tmp_name'], $uploadDir . $sig_uname)) {
+            $signature_image_upd = mysqli_real_escape_string($connection, $sig_uname);
+        }
     }
 
     $qualification_code_title    = mysqli_real_escape_string($connection, $d('qualification_code_title'));
@@ -2660,7 +2696,8 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
     $dob_val_upd   = $dob ? "'$dob'" : 'NULL';
     $cdate_val_upd = $candidate_date ? "'$candidate_date'" : 'NULL';
 
-    $photo_set = $photo_paths_upd ? ", photo_paths='$photo_paths_upd'" : '';
+    $photo_set     = $photo_paths_upd     ? ", photo_paths='$photo_paths_upd'"               : '';
+    $sig_image_set = $signature_image_upd ? ", signature_image='$signature_image_upd'" : '';
 
     $upd = "UPDATE enrolment_form_new SET
         qualification_code_title='$qualification_code_title',
@@ -2693,8 +2730,10 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
         refund_declaration=$refund_declaration,
         candidate_declaration=$candidate_declaration, candidate_full_name='$candidate_full_name',
         candidate_date=$cdate_val_upd, candidate_signature='$candidate_signature',
-        updated_status='resolve_query'
+        updated_status='resolve_query',
+        student_user_id=$student_user_id_upd
         $photo_set
+        $sig_image_set
         WHERE id=$enrolment_id_upd";
 
     if (!mysqli_query($connection, $upd)) {
@@ -3953,20 +3992,6 @@ if(@$_REQUEST['name']=='counselings'){
 
 
 
-if(@$_REQUEST['name']=='student_invoices'){
-    $invoices['data']=[];
-    $query=mysqli_query($connection,"SELECT * from invoices");
-    while($queryRes=mysqli_fetch_array($query)){
-
-        $courses=mysqli_fetch_array(mysqli_query($connection,"SELECT * from courses where course_status!=1 AND course_id=".$queryRes['inv_course']));
-
-        array_push($invoices['data'],array('inv_id'=>$queryRes['inv_auto_id'],'inv_std_name'=>$queryRes['inv_std_name'], 'inv_fee'=>$queryRes['inv_fee'],'inv_paid'=>$queryRes['inv_paid'],'inv_course'=>$courses['course_sname'].'-'.$courses['course_name'],'inv_due'=>$queryRes['inv_due'],'inv_payment_date'=>$queryRes['inv_payment_date']));
-        
-    }
-    header("Content-Type: application/json");
-    echo json_encode($invoices);
-}
-
 if(@$_REQUEST['name']=='student_enrol'){
     $enrol['data']=[];
     $query=mysqli_query($connection,"SELECT * from student_enrolment where st_enrol_status!=1");
@@ -4035,6 +4060,41 @@ if(@$_REQUEST['name']=='all_students'){
     echo json_encode($enrol);
 }
 
+// Handle invoices list request
+if(@$_REQUEST['name']=='invoices_list'){
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $invoices = array('data' => []);
+
+    $query = mysqli_query($connection,
+        "SELECT ei.*,
+                COALESCE(SUM(eis.amount), 0)     AS total_amount,
+                COALESCE(SUM(eis.gst_amount), 0) AS total_gst
+         FROM enrolment_invoices ei
+         LEFT JOIN enrolment_invoice_installments eis ON eis.invoice_id = ei.id
+         GROUP BY ei.id
+         ORDER BY ei.created_at DESC"
+    );
+    if ($query && mysqli_num_rows($query) > 0) {
+        while ($row = mysqli_fetch_assoc($query)) {
+            $invoices['data'][] = array(
+                'id'             => $row['id'],
+                'invoice_number' => $row['invoice_number'],
+                'student_name'   => $row['student_name'],
+                'student_id'     => $row['student_id'],
+                'email_address'  => $row['email_address'],
+                'total_due'      => $row['total_amount'],
+                'total_gst'      => $row['total_gst'],
+                'status'         => $row['status'],
+                'created_at'     => date('d M Y', strtotime($row['created_at']))
+            );
+        }
+    }
+
+    echo json_encode($invoices);
+    exit;
+}
 
 if(@$_POST['formName']=='lookupLoad'){
     if($_POST['selected']=='1'){
@@ -7747,104 +7807,6 @@ if (@$_POST['action'] == 'resolve_enrolment_query') {
     exit;
 }
 
-// Admin – Mark invoice as paid
-if (@$_POST['action'] === 'admin_mark_invoice_paid') {
-    ob_clean();
-    header('Content-Type: application/json');
-    $invoice_id = intval($_POST['invoice_id'] ?? 0);
-    if ($invoice_id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid ID']); exit; }
-    $ok = mysqli_query($connection,
-        "UPDATE student_invoices
-         SET status = 'paid', paid_amount = total_due
-         WHERE id = $invoice_id LIMIT 1"
-    );
-    echo json_encode(['success' => (bool)$ok, 'message' => $ok ? '' : mysqli_error($connection)]);
-    exit;
-}
-
-// Admin – Delete invoice
-if (@$_POST['action'] === 'admin_delete_invoice') {
-    ob_clean();
-    header('Content-Type: application/json');
-    $invoice_id = intval($_POST['invoice_id'] ?? 0);
-    if ($invoice_id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid ID']); exit; }
-    $ok = mysqli_query($connection, "DELETE FROM student_invoices WHERE id = $invoice_id LIMIT 1");
-    echo json_encode(['success' => (bool)$ok, 'message' => $ok ? '' : mysqli_error($connection)]);
-    exit;
-}
-
-// Submit Student Payment Request
-if(@$_POST['formName'] == 'submit_student_payment'){
-    ob_start(); ob_clean();
-    header('Content-Type: application/json');
-
-    $enrolment_db_id  = intval($_POST['enrolment_db_id'] ?? 0);
-    $invoice_number   = mysqli_real_escape_string($connection, $_POST['invoice_number']   ?? '');
-    $student_name     = mysqli_real_escape_string($connection, $_POST['student_name']     ?? '');
-    $student_id       = mysqli_real_escape_string($connection, $_POST['student_id']       ?? '');
-    $email_address    = mysqli_real_escape_string($connection, $_POST['email_address']    ?? '');
-    $course_enrolled  = mysqli_real_escape_string($connection, $_POST['course_enrolled']  ?? '');
-    $enrolment_ref    = mysqli_real_escape_string($connection, $_POST['enrolment_id']     ?? '');
-    $branch           = mysqli_real_escape_string($connection, $_POST['branch']           ?? '');
-    $issue_date       = mysqli_real_escape_string($connection, $_POST['issue_date']       ?? '');
-    $due_date         = mysqli_real_escape_string($connection, $_POST['due_date']         ?? '');
-    $payment_terms    = mysqli_real_escape_string($connection, $_POST['payment_terms']    ?? '');
-    $invoice_type     = mysqli_real_escape_string($connection, $_POST['invoice_type']     ?? '');
-    $payment_method   = mysqli_real_escape_string($connection, $_POST['payment_method']   ?? '');
-    $funding_type     = mysqli_real_escape_string($connection, $_POST['funding_type']     ?? '');
-    $currency         = mysqli_real_escape_string($connection, $_POST['currency']         ?? 'AUD');
-    $discount         = floatval($_POST['discount']    ?? 0);
-    $subtotal         = floatval($_POST['subtotal']    ?? 0);
-    $gst_amount       = floatval($_POST['gst_amount']  ?? 0);
-    $total_due        = floatval($_POST['total_due']   ?? 0);
-
-    if($enrolment_db_id <= 0 || empty($invoice_number)) {
-        echo json_encode(['success' => false, 'message' => 'Invalid submission data.']);
-        exit;
-    }
-
-    // Build line items JSON
-    $descs  = $_POST['li_desc']   ?? [];
-    $units  = $_POST['li_unit']   ?? [];
-    $qtys   = $_POST['li_qty']    ?? [];
-    $prices = $_POST['li_price']  ?? [];
-    $gsts   = $_POST['li_gst']    ?? [];
-    $amts   = $_POST['li_amount'] ?? [];
-    $line_items = [];
-    foreach($descs as $i => $desc) {
-        if(trim($desc) === '') continue;
-        $line_items[] = [
-            'description' => $desc,
-            'unit'        => $units[$i]  ?? '',
-            'qty'         => floatval($qtys[$i]   ?? 1),
-            'unit_price'  => floatval($prices[$i] ?? 0),
-            'gst'         => $gsts[$i]  ?? 'No',
-            'amount'      => floatval($amts[$i]   ?? 0),
-        ];
-    }
-    $line_items_json = mysqli_real_escape_string($connection, json_encode($line_items));
-
-    $ins = mysqli_query($connection,
-        "INSERT INTO student_invoices
-         (enrolment_db_id, invoice_number, student_name, student_id, email_address,
-          course_enrolled, enrolment_ref, branch, issue_date, due_date,
-          payment_terms, invoice_type, payment_method, funding_type, currency,
-          line_items, subtotal, gst_amount, discount, total_due, status)
-         VALUES
-         ($enrolment_db_id, '$invoice_number', '$student_name', '$student_id', '$email_address',
-          '$course_enrolled', '$enrolment_ref', '$branch', '$issue_date', '$due_date',
-          '$payment_terms', '$invoice_type', '$payment_method', '$funding_type', '$currency',
-          '$line_items_json', $subtotal, $gst_amount, $discount, $total_due, 'pending')"
-    );
-
-    if($ins) {
-        echo json_encode(['success' => true, 'invoice_id' => mysqli_insert_id($connection)]);
-    } else {
-        echo json_encode(['success' => false, 'message' => mysqli_error($connection)]);
-    }
-    exit;
-}
-
 // Assessment Pass
 if(@$_POST['action'] == 'assessment_pass'){
     ob_clean();
@@ -7971,5 +7933,102 @@ if(@$_POST['action'] == 'assessment_manual_pass'){
     }
     exit;
 }
+
+// ─── Auto-create invoice tables ──────────────────────────────────────────────
+mysqli_query($connection, "CREATE TABLE IF NOT EXISTS `invoices` (
+    `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `invoice_number`  VARCHAR(30)  NOT NULL UNIQUE,
+    `enrolment_id`    INT UNSIGNED NOT NULL,
+    `student_name`    VARCHAR(200) NOT NULL DEFAULT '',
+    `student_id`      VARCHAR(50)  NOT NULL DEFAULT '',
+    `email_address`   VARCHAR(150) NOT NULL DEFAULT '',
+    `status`          ENUM('pending','paid','overdue') NOT NULL DEFAULT 'pending',
+    `created_by`      INT UNSIGNED DEFAULT NULL,
+    `created_at`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_enrolment` (`enrolment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+mysqli_query($connection, "CREATE TABLE IF NOT EXISTS `invoice_installments` (
+    `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `invoice_id`    INT UNSIGNED NOT NULL,
+    `course_id`     INT UNSIGNED DEFAULT NULL,
+    `invoice_type`  VARCHAR(60)  NOT NULL DEFAULT '',
+    `funding_type`  VARCHAR(60)  NOT NULL DEFAULT '',
+    `currency`      VARCHAR(10)  NOT NULL DEFAULT 'AUD',
+    `amount`        DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `gst_amount`    DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `issue_date`    DATE DEFAULT NULL,
+    `due_date`      DATE DEFAULT NULL,
+    `status`        ENUM('pending','paid') NOT NULL DEFAULT 'pending',
+    `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_invoice` (`invoice_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Create Invoice handler ───────────────────────────────────────────────────
+if (@$_POST['formName'] === 'create_invoice') {
+    header('Content-Type: application/json; charset=UTF-8');
+
+    $enrolment_id  = isset($_POST['enrolment_id']) ? intval($_POST['enrolment_id']) : 0;
+    $installments  = isset($_POST['installments_json']) ? json_decode($_POST['installments_json'], true) : [];
+
+    if ($enrolment_id <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Invalid enrolment.']);
+        exit;
+    }
+    if (empty($installments) || !is_array($installments)) {
+        echo json_encode(['success' => false, 'message' => 'No installments provided.']);
+        exit;
+    }
+
+    // Fetch student details
+    $enr = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT given_name, surname, office_student_id, email_address FROM enrolment_form_new WHERE id = $enrolment_id LIMIT 1"
+    ));
+    if (!$enr) {
+        echo json_encode(['success' => false, 'message' => 'Enrolment not found.']);
+        exit;
+    }
+
+    $student_name = mysqli_real_escape_string($connection, trim($enr['given_name'] . ' ' . $enr['surname']));
+    $student_id   = mysqli_real_escape_string($connection, $enr['office_student_id']);
+    $email        = mysqli_real_escape_string($connection, $enr['email_address']);
+    $created_by   = intval($_SESSION['user_id'] ?? 0);
+    $inv_number   = 'INV-' . strtoupper(substr(md5(uniqid()), 0, 8));
+
+    // Insert invoice header
+    $ok = mysqli_query($connection,
+        "INSERT INTO invoices (invoice_number, enrolment_id, student_name, student_id, email_address, created_by)
+         VALUES ('$inv_number', $enrolment_id, '$student_name', '$student_id', '$email', $created_by)"
+    );
+    if (!$ok) {
+        echo json_encode(['success' => false, 'message' => 'Could not create invoice: ' . mysqli_error($connection)]);
+        exit;
+    }
+    $invoice_id = mysqli_insert_id($connection);
+
+    // Insert installments
+    foreach ($installments as $inst) {
+        $course_id    = !empty($inst['course_id'])    ? intval($inst['course_id'])                                          : 'NULL';
+        $inv_type     = mysqli_real_escape_string($connection, trim($inst['invoice_type']  ?? ''));
+        $fund_type    = mysqli_real_escape_string($connection, trim($inst['funding_type']  ?? ''));
+        $currency     = mysqli_real_escape_string($connection, trim($inst['currency']      ?? 'AUD'));
+        $amount       = round(floatval($inst['amount']     ?? 0), 2);
+        $gst_amount   = round(floatval($inst['gst_amount'] ?? 0), 2);
+        $issue_date   = !empty($inst['issue_date']) ? "'" . mysqli_real_escape_string($connection, $inst['issue_date']) . "'" : 'NULL';
+        $due_date     = !empty($inst['due_date'])   ? "'" . mysqli_real_escape_string($connection, $inst['due_date'])   . "'" : 'NULL';
+
+        mysqli_query($connection,
+            "INSERT INTO invoice_installments
+                (invoice_id, course_id, invoice_type, funding_type, currency, amount, gst_amount, issue_date, due_date)
+             VALUES
+                ($invoice_id, $course_id, '$inv_type', '$fund_type', '$currency', $amount, $gst_amount, $issue_date, $due_date)"
+        );
+    }
+
+    echo json_encode(['success' => true, 'invoice_number' => $inv_number, 'invoice_id' => $invoice_id]);
+    exit;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 ?>

@@ -43,11 +43,21 @@ if(!$assessment){
 
 function getQuestionTypeName($type) {
     $types = [
-        1 => 'Single Choice',
-        2 => 'True/False',
-        3 => 'Multiple Choice',
-        4 => 'Text Answer',
-        5 => 'Image-based'
+        1  => 'Single Choice',
+        2  => 'True/False',
+        3  => 'Multiple Choice',
+        4  => 'Text Answer',
+        5  => 'Image-based',
+        6  => 'Text',
+        7  => 'Number',
+        8  => 'URL',
+        9  => 'Textarea',
+        10 => 'Dropdown',
+        11 => 'Radio',
+        12 => 'Checkbox',
+        13 => 'Date',
+        14 => 'Time',
+        15 => 'Date & Time',
     ];
     return $types[$type] ?? 'Unknown';
 }
@@ -145,7 +155,14 @@ function getQuestionTypeName($type) {
                                                     <label class="form-label fw-bold">
                                                         <span class="badge bg-primary me-2">Q<?php echo $index + 1; ?></span>
                                                         <?php echo htmlspecialchars($q['question_text']); ?>
-                                                        <span class="text-muted ms-2">(<?php echo $q['marks']; ?> marks)</span>
+                                                        <span class="text-muted ms-2">(<?php echo $q['marks']; ?> 
+                                                        <?php if($q['marks'] =='1'){
+                                                            echo "mark";
+                                                        }else{ echo "marks";}
+                                                        
+                                                        ?>
+                                                        
+                                                        )</span>
                                                     </label>
                                                 </div>
                                                 
@@ -230,6 +247,81 @@ function getQuestionTypeName($type) {
                                                         </label>
                                                     </div>
                                                     <?php endif; endforeach; ?>
+                                                </div>
+                                                <?php elseif($qt == 6 || $qt == 7 || $qt == 8): // Text / Number / URL
+                                                $input_type  = ($qt == 7) ? 'number' : (($qt == 8) ? 'url' : 'text');
+                                                $placeholder = ($qt == 7) ? 'Enter a number…' : (($qt == 8) ? 'https://…' : 'Type your answer here…');
+                                                $extra_attr  = ($qt == 7) ? ' step="any"' : '';
+                                                ?>
+                                                <div class="mb-3">
+                                                    <input type="<?php echo $input_type; ?>" class="form-control"
+                                                           name="text_answer_<?php echo $q['question_id']; ?>"
+                                                           id="text_<?php echo $q['question_id']; ?>"
+                                                           placeholder="<?php echo $placeholder; ?>"<?php echo $extra_attr; ?>
+                                                           onchange="saveTextAnswer(<?php echo $q['question_id']; ?>, this.value)">
+                                                </div>
+                                                <?php elseif($qt == 9): // Textarea ?>
+                                                <div class="mb-3">
+                                                    <textarea class="form-control" rows="4"
+                                                              name="text_answer_<?php echo $q['question_id']; ?>"
+                                                              id="text_<?php echo $q['question_id']; ?>"
+                                                              placeholder="Type your answer here…"
+                                                              onchange="saveTextAnswer(<?php echo $q['question_id']; ?>, this.value)"></textarea>
+                                                </div>
+                                                <?php elseif($qt == 10): // Dropdown
+                                                $dd_opts = json_decode($q['option_1'] ?? '', true) ?? [];
+                                                ?>
+                                                <div class="mb-3">
+                                                    <select class="form-select"
+                                                            name="text_answer_<?php echo $q['question_id']; ?>"
+                                                            id="text_<?php echo $q['question_id']; ?>"
+                                                            onchange="saveTextAnswer(<?php echo $q['question_id']; ?>, this.value)">
+                                                        <option value="">-- Select an option --</option>
+                                                        <?php foreach($dd_opts as $dd_opt): ?>
+                                                        <option value="<?php echo htmlspecialchars($dd_opt); ?>"><?php echo htmlspecialchars($dd_opt); ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                                <?php elseif($qt == 11): // Radio group (text options)
+                                                $r_opts = json_decode($q['option_1'] ?? '', true) ?? [];
+                                                ?>
+                                                <div class="mb-3 options-container" data-question-id="<?php echo $q['question_id']; ?>">
+                                                    <?php foreach($r_opts as $ri => $r_opt): ?>
+                                                    <div class="form-check mb-2 option-item" onclick="selectRadioTextOption(<?php echo $q['question_id']; ?>, this)">
+                                                        <input class="form-check-input radio-custom" type="radio"
+                                                               name="answer_<?php echo $q['question_id']; ?>"
+                                                               id="q<?php echo $q['question_id']; ?>_r<?php echo $ri; ?>"
+                                                               value="<?php echo htmlspecialchars($r_opt); ?>">
+                                                        <label class="form-check-label" for="q<?php echo $q['question_id']; ?>_r<?php echo $ri; ?>">
+                                                            <?php echo htmlspecialchars($r_opt); ?>
+                                                        </label>
+                                                    </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <?php elseif($qt == 12): // Checkbox group (text options)
+                                                $cb_opts = json_decode($q['option_1'] ?? '', true) ?? [];
+                                                ?>
+                                                <div class="mb-3 options-container" data-question-id="<?php echo $q['question_id']; ?>">
+                                                    <?php foreach($cb_opts as $ci => $cb_opt): ?>
+                                                    <div class="form-check mb-2 checkbox-item" onclick="selectMultiTextOption(<?php echo $q['question_id']; ?>, this)">
+                                                        <input class="form-check-input checkbox-custom" type="checkbox"
+                                                               name="multi_<?php echo $q['question_id']; ?>[]"
+                                                               id="q<?php echo $q['question_id']; ?>_c<?php echo $ci; ?>"
+                                                               value="<?php echo htmlspecialchars($cb_opt); ?>">
+                                                        <label class="form-check-label" for="q<?php echo $q['question_id']; ?>_c<?php echo $ci; ?>">
+                                                            <?php echo htmlspecialchars($cb_opt); ?>
+                                                        </label>
+                                                    </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <?php elseif($qt == 13 || $qt == 14 || $qt == 15): // Date / Time / DateTime
+                                                $dt_type = ($qt == 13) ? 'date' : (($qt == 14) ? 'time' : 'datetime-local');
+                                                ?>
+                                                <div class="mb-3">
+                                                    <input type="<?php echo $dt_type; ?>" class="form-control"
+                                                           name="text_answer_<?php echo $q['question_id']; ?>"
+                                                           id="text_<?php echo $q['question_id']; ?>"
+                                                           onchange="saveTextAnswer(<?php echo $q['question_id']; ?>, this.value)">
                                                 </div>
                                                 <?php endif; ?>
                                             </div>
@@ -394,6 +486,42 @@ function getQuestionTypeName($type) {
                     saveAnswer(questionId, text);
                     answeredQuestions.add(questionId);
                 }
+            }
+
+            // Type 11 — Radio with text values
+            function selectRadioTextOption(questionId, element) {
+                var input = element.querySelector('input');
+                if(input) input.checked = true;
+
+                var container = element.closest('.options-container');
+                container.querySelectorAll('.option-item').forEach(function(item) {
+                    item.classList.remove('selected');
+                });
+                element.classList.add('selected');
+
+                saveAnswer(questionId, input ? input.value : '');
+                answeredQuestions.add(questionId);
+            }
+
+            // Type 12 — Checkbox with text values
+            function selectMultiTextOption(questionId, element) {
+                var input = element.querySelector('input');
+                if(input && event.target !== input) {
+                    input.checked = !input.checked;
+                }
+                if(input && input.checked) {
+                    element.classList.add('checked');
+                } else {
+                    element.classList.remove('checked');
+                }
+
+                var selected = [];
+                element.closest('.options-container').querySelectorAll('input:checked').forEach(function(el) {
+                    selected.push(el.value);
+                });
+
+                saveAnswer(questionId, JSON.stringify(selected));
+                answeredQuestions.add(questionId);
             }
             
             function saveAnswer(questionId, answer) {

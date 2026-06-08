@@ -94,25 +94,6 @@ if(@$_REQUEST['name']=='studentEnquiry'){
     header("Content-Type: application/json");
     echo json_encode($enquiries);
 }
-if(@$_REQUEST['name']=='student_invoices'){
-    $invoices['data']=[];
-    $query=mysqli_query($connection,"SELECT * from invoices");
-    while($queryRes=mysqli_fetch_array($query)){
-
-        if($queryRes['inv_course']==1){
-            $course='Basic';
-        }else if($queryRes['inv_course']==2){
-            $course='Intermediate';
-        }else{
-            $course='Expert';
-        }
-
-        array_push($invoices['data'],array('inv_std_name'=>$queryRes['inv_std_name'], 'inv_fee'=>$queryRes['inv_fee'],'inv_paid'=>$queryRes['inv_paid'],'inv_course'=>$course,'inv_due'=>$queryRes['inv_due'],'inv_payment_date'=>$queryRes['inv_payment_date']));
-        
-    }
-    header("Content-Type: application/json");
-    echo json_encode($invoices);
-}
 if(@$_REQUEST['name']=='student_enrol'){
     $enrol['data']=[];
     $query=mysqli_query($connection,"SELECT * from student_enrolment");

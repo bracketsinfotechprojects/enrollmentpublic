@@ -10,7 +10,7 @@ if($assessment_id > 0){
         $assessment = mysqli_fetch_assoc($res);
     }
     
-    $questions_result = mysqli_query($connection, "SELECT * FROM assessment_questions WHERE assessment_id = $assessment_id ORDER BY question_id DESC");
+    $questions_result = mysqli_query($connection, "SELECT * FROM assessment_questions WHERE assessment_id = $assessment_id ORDER BY question_id ASC");
     $questions = [];
     if($questions_result){
         while($row = mysqli_fetch_assoc($questions_result)){

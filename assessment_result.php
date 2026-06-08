@@ -389,9 +389,9 @@ function getPercentageClass($perc){
                                                             <?php if(intval($sub['obtained_marks']) >= intval($sub['passing_marks']) ): ?>
                                                             <button type="button"
                                                                 class="btn btn-sm btn-success ms-1"
-                                                                title="Pass"
+                                                                title="Pass & Proceed to Enrolment"
                                                                 onclick="handleAction('pass', <?php echo $sub['submission_id']; ?>, <?php echo $sub['assessment_id']; ?>, <?php echo $sub['student_enrol_id']; ?>)">
-                                                                <i class="ti ti-check"></i> Pass
+                                                                 Pass & Proceed to Enrolment
                                                             </button>
                                                             <?php elseif(intval($sub['obtained_marks']) < intval($sub['passing_marks']) && intval($sub['assessment_count']) < 3): ?>
                                                             <button type="button"

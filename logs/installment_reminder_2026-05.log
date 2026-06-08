@@ -1,0 +1,6 @@
+[2026-05-28 08:49:54] Installment reminder cron started.
+[2026-05-28 08:49:54] Today: 2026-05-28
+[2026-05-28 08:49:54] Invoices marked overdue: 0
+[2026-05-28 08:49:54] Overdue installments found: 1
+[2026-05-28 08:50:02]   SENT inst#16 → monikashinde8421@gmail.com (INV-E8D5C2CF, $1, 1d overdue)
+[2026-05-28 08:50:02] Done. Sent: 1 | Failed: 0 | Skipped: 0 | Time: 8.45s

@@ -100,28 +100,6 @@ if(@$_SESSION['user_type']==1){
                                     <!-- end card-body -->
                                 </div>
                                 <!-- end card -->
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h4 class="card-title mb-4">Invoices</h4>  
-                                            <table id="datatable_invoices" class="table table-striped table-bordered nowrap" style="border-collapse: collapse; border-spacing: 0; width: 100%;">
-                                                <thead>
-                                                    <tr>
-                                                        <th scope="col">Student Name</th>
-                                                        <th scope="col">Course</th>
-                                                        <th scope="col">Course Fee</th>
-                                                        <th scope="col">Paid Amount</th>
-                                                        <th scope="col">Due Amount</th>
-                                                        <th scope="col">Payment Date</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-
-                                                </tbody>
-                                            </table>
-                                    </div>
-                                    <!-- end card-body -->
-                                </div>
-                                <!-- end card -->
                             </div>
                             <!-- end col -->
                         </div>
@@ -166,19 +144,6 @@ if(@$_SESSION['user_type']==1){
                         { data: 'st_enrol_qual' },
                         { data: 'st_enrol_venue' },
                         { data: 'st_enrol_source' },
-                    ],
-                });
-                
-                $('#datatable_invoices').DataTable({lengthMenu: [5, 10, 20],language:{paginate:{previous:"<i class='mdi mdi-chevron-left'>",next:"<i class='mdi mdi-chevron-right'>"}},drawCallback:function(){$(".dataTables_paginate > .pagination").addClass("pagination-rounded")},
-                scrollX: true,
-                    ajax: 'includes/datacontrol?name=student_invoices',
-                        columns: [
-                        { data: 'inv_std_name' },                                    
-                        { data: 'inv_course' },
-                        { data: 'inv_fee' },
-                        { data: 'inv_paid' },
-                        { data: 'inv_due' },
-                        { data: 'inv_payment_date' },
                     ],
                 });
             })

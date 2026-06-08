@@ -129,7 +129,15 @@ $display_name = $display_name ?: '—';
                                         <?php endif; ?>
                                     </div>
                                     <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                                        <?php if (count($queries) > 0): ?>
+                                        <?php if (($enrolment_row['status'] ?? '') === 'complete'): ?>
+                                        <span class="badge bg-success fs-12 px-3 py-2">
+                                            <i class="ti ti-circle-check me-1"></i>No Queries
+                                        </span>
+                                        <?php elseif (($enrolment_row['updated_status'] ?? '') === 'resolve_query'): ?>
+                                        <span class="badge bg-info fs-12 px-3 py-2">
+                                            <i class="ti ti-circle-check me-1"></i>Enrolment Form Updated
+                                        </span>
+                                        <?php elseif (count($queries) > 0): ?>
                                         <span class="badge bg-danger fs-12 px-3 py-2">
                                             <i class="ti ti-message-report me-1"></i>
                                             <?php echo count($queries); ?> Open Quer<?php echo count($queries) !== 1 ? 'ies' : 'y'; ?>
@@ -139,15 +147,6 @@ $display_name = $display_name ?: '—';
                                             <i class="ti ti-circle-check me-1"></i>No Queries
                                         </span>
                                         <?php endif; ?>
-                                        <?php if (($enrolment_row['status'] ?? '') !== 'complete'): ?>
-                                        <a href="student_enrolment_form.php?edit=1" class="btn btn-sm btn-outline-primary">
-                                            <i class="ti ti-edit me-1"></i>Edit Enrolment Form
-                                        </a>
-                                        <?php else: ?>
-                                        <span class="badge bg-success fs-6 px-3 py-2">
-                                            <i class="ti ti-circle-check me-1"></i>Enrolment Completed
-                                        </span>
-                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -155,13 +154,35 @@ $display_name = $display_name ?: '—';
                     </div>
                 </div>
 
-                <?php if (count($queries) === 0): ?>
+                <?php
+                $has_open_queries = count(array_filter($queries, fn($q) => $q['status'] !== 'resolved')) > 0;
+                $upd_status       = $enrolment_row['updated_status'] ?? '';
+                $show_resolve     = ($enrolment_row['status'] !== 'complete') &&
+                                    ($upd_status === 'raise_query' || ($enrolment_row['status'] === 'pending' && $has_open_queries));
+                ?>
+
+                <?php if ($show_resolve): ?>
+                <!-- Resolve query call-to-action -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="alert alert-warning d-flex align-items-center gap-3" role="alert">
+                            <i class="ti ti-alert-triangle fs-3 flex-shrink-0"></i>
+                            <div class="flex-grow-1">
+                                <strong>Action Required – Resolve Your Queries</strong><br>
+                                <span class="small">Admin has raised queries on your enrolment. Please review each query below and update your enrolment form accordingly.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if (($enrolment_row['status'] ?? '') === 'complete' || count($queries) === 0): ?>
                 <!-- No queries -->
                 <div class="row">
                     <div class="col-12">
                         <div class="text-center py-5">
                             <i class="ti ti-message-off fs-1 text-muted mb-3 d-block"></i>
-                            <h5>No Queries Raised</h5>
+                            <h5>No Queries</h5>
                             <p class="text-muted">There are no queries on your enrolment. Everything looks good!</p>
                         </div>
                     </div>
@@ -195,6 +216,11 @@ $display_name = $display_name ?: '—';
                                         <span><i class="ti ti-user me-1"></i>Raised by: <?php echo htmlspecialchars($q['raised_by'] ?: 'Admin'); ?></span>
                                         <span><i class="ti ti-calendar me-1"></i><?php echo date('d M Y, h:i A', strtotime($q['created_at'])); ?></span>
                                     </div>
+                                    <?php if ($q['status'] !== 'resolved' && $show_resolve): ?>
+                                    <a href="student_enrolment_form.php?edit=1" class="btn btn-sm btn-outline-warning">
+                                        <i class="ti ti-edit me-1"></i>Resolve Query
+                                    </a>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>

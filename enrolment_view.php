@@ -505,6 +505,19 @@ $photos = json_decode($r['photo_paths'] ?? '[]', true) ?: [];
                             <div class="field-label">Signature</div>
                             <div class="field-value"><?php echo val($r['candidate_signature']); ?></div>
                         </div>
+                        <?php if (!empty($r['signature_image'])): ?>
+                        <div class="col-md-3">
+                            <div class="field-label">Signature Image</div>
+                            <div class="field-value mt-1">
+                                <img src="uploads/<?php echo htmlspecialchars($r['signature_image']); ?>"
+                                     alt="Signature Image"
+                                     class="img-thumbnail sig-zoom-thumb"
+                                     style="max-height:80px;max-width:220px;cursor:zoom-in;transition:box-shadow .15s;"
+                                     data-src="uploads/<?php echo htmlspecialchars($r['signature_image']); ?>"
+                                     onerror="this.style.display='none'">
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -660,6 +673,32 @@ $(function(){
                 $btn.prop('disabled', false).html('<i class="ti ti-check me-1"></i>Complete Enrolment');
             }
         });
+    });
+});
+</script>
+<!-- Signature Lightbox Modal -->
+<div class="modal fade" id="sigLightboxModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:90vw;width:auto;">
+        <div class="modal-content bg-transparent border-0 shadow-none">
+            <div class="modal-body p-0 text-center position-relative">
+                <button type="button" class="btn-close btn-close-white position-absolute"
+                        data-bs-dismiss="modal"
+                        style="top:-10px;right:-10px;background-color:#333;border-radius:50%;padding:8px;z-index:10;"></button>
+                <img id="sigLightboxImg" src="" alt="Signature"
+                     style="max-width:90vw;max-height:85vh;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,.6);">
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+.sig-zoom-thumb:hover { box-shadow: 0 0 0 3px #0d6efd55; }
+</style>
+<script>
+$(function(){
+    $(document).on('click', '.sig-zoom-thumb', function(){
+        $('#sigLightboxImg').attr('src', $(this).data('src'));
+        var modal = new bootstrap.Modal(document.getElementById('sigLightboxModal'));
+        modal.show();
     });
 });
 </script>
