@@ -10,16 +10,20 @@ $current_page = $current_page_raw !== '' ? preg_replace('/\.php$/i', '', $curren
 $current_query = $_GET ?? array();
 
 $enquiries_pages    = array('student_enquiry', 'view_enquiries', 'enquiry_reports');
-$enrolment_pages    = array('enrolment', 'enrolment_online', 'student_enrolment_form', 'enrolment_form_new', 'enrolment_list', 'student_payment', 'student_invoice');
-$invoices_pages     = array('invoices1', 'admin_student_invoices');
+$enrolment_pages    = array('enrolment', 'enrolment_online', 'student_enrolment_form', 'enrolment_form_new', 'enrolment_list', 'enrolment_status');
 $appointments_pages = array('appointment_booking', 'appointment_blocks', 'appointment_calendar', 'appointment_reports');
 $course_forms_pages = array('course_cancellations_list', 'course_extensions_list');
+$invoices_pages         = array('invoices_list', 'invoices_create', 'invoice_track');
+$student_invoice_pages  = array('student_invoice', 'student_invoice_view');
+$assessment_pages       = array('assessment_list', 'assessment_result', 'assessment_new');
 
-$is_enquiries_active    = in_array($current_page, $enquiries_pages, true);
-$is_enrolment_active    = in_array($current_page, $enrolment_pages, true);
-$is_appointments_active = in_array($current_page, $appointments_pages, true);
-$is_course_forms_active = in_array($current_page, $course_forms_pages, true);
-$is_invoices_active     = in_array($current_page, $invoices_pages,     true);
+$is_enquiries_active       = in_array($current_page, $enquiries_pages, true);
+$is_enrolment_active       = in_array($current_page, $enrolment_pages, true);
+$is_appointments_active    = in_array($current_page, $appointments_pages, true);
+$is_course_forms_active    = in_array($current_page, $course_forms_pages, true);
+$is_invoices_active        = in_array($current_page, $invoices_pages, true);
+$is_student_invoice_active = in_array($current_page, $student_invoice_pages, true);
+$is_assessment_active      = in_array($current_page, $assessment_pages, true);
 
 // Check enrolment_status for student menu items
 $student_enrolment_unlocked = false;
@@ -127,6 +131,9 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                 </li>
 <?php if ($student_enrolment_unlocked): ?>
                                 <li>
+                                    <a href="enrolment_status.php" class="<?php echo $current_page === 'enrolment_status' ? 'active' : ''; ?>"><i class="ti ti-activity"></i><span>Enrolment Status</span></a>
+                                </li>
+                                <li>
                                     <a href="student_enrolment_form.php" class="<?php echo $current_page === 'student_enrolment_form' ? 'active' : ''; ?>"><i class="ti ti-forms"></i><span>Enrolment Form</span></a>
                                 </li>
                                 <li>
@@ -135,10 +142,7 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                 <?php endif; ?>
                                 <?php if ($student_enrolment_complete): ?>
                                 <li>
-                                    <a href="student_payment.php" class="<?php echo $current_page === 'student_payment' ? 'active' : ''; ?>"><i class="ti ti-credit-card"></i><span>Make Payment</span></a>
-                                </li>
-                                <li>
-                                    <a href="student_invoice.php" class="<?php echo $current_page === 'student_invoice' ? 'active' : ''; ?>"><i class="ti ti-file-invoice"></i><span>My Invoice</span></a>
+                                    <a href="student_invoice.php" class="<?php echo $is_student_invoice_active ? 'active' : ''; ?>"><i class="ti ti-file-invoice"></i><span>My Invoice</span></a>
                                 </li>
                                 <?php endif; ?>
                                 <?php } ?>
@@ -162,8 +166,9 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                 <li class="submenu">
                                     <a href="javascript:void(0);" class="<?php echo $is_invoices_active ? 'active' : ''; ?>"><i class="ti ti-file-invoice"></i><span>Invoices</span><span class="menu-arrow"></span></a>
                                     <ul>
-                                        <li><a href="admin_student_invoices.php" class="<?php echo $current_page === 'admin_student_invoices' ? 'active' : ''; ?>">Student Invoices</a></li>
-                                        <li><a href="invoices1.php" class="<?php echo $current_page === 'invoices1' ? 'active' : ''; ?>">Old Invoice</a></li>
+                                        <li><a href="invoices_list.php" class="<?php echo $current_page === 'invoices_list' ? 'active' : ''; ?>">Invoice List</a></li>
+                                        <li><a href="invoices_create.php" class="<?php echo $current_page === 'invoices_create' ? 'active' : ''; ?>">Create Invoice</a></li>
+                                        <li><a href="invoice_track.php" class="<?php echo $current_page === 'invoice_track' ? 'active' : ''; ?>">Track &amp; Follow-up</a></li>
                                     </ul>
                                 </li>
                                 <?php } ?>
@@ -180,7 +185,7 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
 
                                 <?php if(@$_SESSION['user_type']==1 || @$_SESSION['user_type']==2){ ?>
                                 <li>
-                                    <a href="form_builder.php" class="<?php echo $current_page === 'form_builder' ? 'active' : ''; ?>"><i class="ti ti-forms"></i><span>Form Builder</span></a>
+                                    <a href="/assessment/enrollmentpublic/easyforms" target="_blank"><i class="ti ti-forms"></i><span>Form Builder</span></a>
                                 </li>
                                 <?php } ?>
 
@@ -192,10 +197,14 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                     <a href="javascript:void(0);"><i class="ti ti-user-plus"></i><span>Assessment</span><span class="menu-arrow"></span></a>
                                     <ul>
                                         <!-- <li><a href="create_assessment.php" class="<?php echo $current_page === 'create_assessment.php' ? 'active' : ''; ?>">Create Assessment</a></li> -->
-                                        <li><a href="assessment_list.php" class="<?php echo $current_page === 'assessment_list.php' ? 'active' : ''; ?>">Assessment List</a></li>
+                                        <!-- <li><a href="assessment_list.php" class="<?php echo $current_page === 'assessment_list.php' ? 'active' : ''; ?>">Assessment List</a></li> -->
+                                       <li><a href="assessment_new.php" class="<?php echo $current_page === 'assessment_new.php' ? 'active' : ''; ?>">Assessment List</a></li>
                                         <li><a href="assessment_result.php" class="<?php echo $current_page === 'assessment_result.php' ? 'active' : ''; ?>">Assessment Results</a></li>
                                     </ul>
                                 </li>
+                                <!-- <li>
+                                    <a href="assessment_new.php" class="<?//php echo $current_page === 'assessment_new' ? 'active' : ''; ?>"><i class="ti ti-clipboard-list"></i><span>Assessment New</span></a>
+                                </li> -->
                                 <?php } ?>
                             </ul>
                         </li>

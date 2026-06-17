@@ -2293,8 +2293,10 @@ if (@$_POST['formName'] == 'student_enrols_online') {
     $lastId = mysqli_insert_id($connection);
     $courseId = !empty($courses) ? (int)$courses[0] : 0;
     $courseID = $courseId ? mysqli_fetch_array(mysqli_query($connection, "SELECT * FROM courses WHERE course_id=$courseId")) : null;
-    $dateYear = date('Y');
-    $uniqueId = $courseID ? sprintf($dateYear . $courseID['course_name'] . '%04d', $lastId) : ($dateYear . 'ENR' . sprintf('%04d', $lastId));
+    $namePrefix  = ucfirst(strtolower(substr(preg_replace('/[^a-zA-Z]/', '', $given_name), 0, 4)));
+    $dobTs       = !empty($dob) ? strtotime($dob) : false;
+    $dobSuffix   = $dobTs ? date('dmy', $dobTs) : '';
+    $uniqueId    = $namePrefix . $dobSuffix;
     $coursesDisplay = '';
     if (!empty($courses) && $courseID) {
         $names = array();
@@ -2386,6 +2388,16 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
         $photo_paths = json_encode($uploaded);
     }
 
+    // Signature image upload
+    $signature_image_val = '';
+    if (!empty($_FILES['signature_image']['tmp_name']) && is_uploaded_file($_FILES['signature_image']['tmp_name'])) {
+        $sig_ext   = strtolower(pathinfo($_FILES['signature_image']['name'], PATHINFO_EXTENSION));
+        $sig_uname = 'sig_' . rand(1000, 999999) . '_' . time() . '.' . $sig_ext;
+        if (move_uploaded_file($_FILES['signature_image']['tmp_name'], $uploadDir . $sig_uname)) {
+            $signature_image_val = $sig_uname;
+        }
+    }
+
     // Sanitize all fields
     $qualification_code_title    = mysqli_real_escape_string($connection, $d('qualification_code_title'));
     $usi_id                      = mysqli_real_escape_string($connection, $d('usi_id'));
@@ -2474,9 +2486,24 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
     $enquiry_id                  = mysqli_real_escape_string($connection, $d('enquiry_id'));
     $rto_name                    = mysqli_real_escape_string($connection, $d('rto_name'));
     $branch_name                 = mysqli_real_escape_string($connection, $d('branch_name'));
+    $student_user_id_val         = intval($_POST['student_user_id'] ?? 0);
 
     $dob_val   = $dob ? "'$dob'" : 'NULL';
     $cdate_val = $candidate_date ? "'$candidate_date'" : 'NULL';
+
+    // Add student_user_id column if missing
+    $col_chk = mysqli_query($connection, "SHOW COLUMNS FROM `enrolment_form_new` LIKE 'student_user_id'");
+    if ($col_chk && mysqli_num_rows($col_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `enrolment_form_new` ADD COLUMN `student_user_id` INT UNSIGNED DEFAULT NULL");
+    }
+
+    // Add signature_image column if missing
+    $sig_col_chk = mysqli_query($connection, "SHOW COLUMNS FROM `enrolment_form_new` LIKE 'signature_image'");
+    if ($sig_col_chk && mysqli_num_rows($sig_col_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `enrolment_form_new` ADD COLUMN `signature_image` VARCHAR(255) DEFAULT NULL");
+    }
+
+    $sig_img_esc = mysqli_real_escape_string($connection, $signature_image_val);
 
     $insert = "INSERT INTO enrolment_form_new (
         user_type, username,
@@ -2500,7 +2527,7 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
         office_coordinator_name, office_invoice_provided, office_receipt_collected,
         office_lms_access, office_resources_access, office_uploaded_sms, office_welcome_pack_sent,
         candidate_declaration, candidate_full_name, candidate_date, candidate_signature,
-        enquiry_id, rto_name, branch_name, photo_paths, updated_status
+        enquiry_id, rto_name, branch_name, photo_paths, updated_status, student_user_id, signature_image
     ) VALUES (
         '$user_type', '$username',
         '$qualification_code_title',
@@ -2523,7 +2550,7 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
         '$office_coordinator_name', $office_invoice_provided, $office_receipt_collected,
         $office_lms_access, $office_resources_access, $office_uploaded_sms, $office_welcome_pack_sent,
         $candidate_declaration, '$candidate_full_name', $cdate_val, '$candidate_signature',
-        '$enquiry_id', '$rto_name', '$branch_name', '$photo_paths', 'pending'
+        '$enquiry_id', '$rto_name', '$branch_name', '$photo_paths', 'pending', $student_user_id_val, '$sig_img_esc'
     )";
 
     if (!mysqli_query($connection, $insert)) {
@@ -2532,13 +2559,11 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
     }
     $last_id = mysqli_insert_id($connection);
 
-    // Generate unique student ID
-    $course_id = !empty($courses_arr) ? (int)$courses_arr[0] : 0;
-    $course_row = $course_id ? mysqli_fetch_assoc(mysqli_query($connection, "SELECT course_sname FROM courses WHERE course_id=$course_id")) : null;
-    $year = date('Y');
-    $unique_id = $course_row
-        ? $year . strtoupper(preg_replace('/\s+/', '', $course_row['course_sname'])) . sprintf('%04d', $last_id)
-        : $year . 'ENR' . sprintf('%04d', $last_id);
+    // Generate unique student ID: first 4 letters of name + DOB as DDMMYY (e.g. Moni110799)
+    $namePrefix = ucfirst(strtolower(substr(preg_replace('/[^a-zA-Z]/', '', $given_name), 0, 4)));
+    $dobTs      = !empty($dob) ? strtotime($dob) : false;
+    $dobSuffix  = $dobTs ? date('dmy', $dobTs) : '';
+    $unique_id  = $namePrefix . $dobSuffix;
 
     mysqli_query($connection, "UPDATE enrolment_form_new SET office_student_id='" . mysqli_real_escape_string($connection, $unique_id) . "' WHERE id=$last_id");
 
@@ -2551,7 +2576,8 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
     ob_clean();
     header('Content-Type: application/json');
 
-    $enrolment_id_upd = intval($_POST['enrolment_id'] ?? 0);
+    $enrolment_id_upd    = intval($_POST['enrolment_id'] ?? 0);
+    $student_user_id_upd = intval($_POST['student_user_id'] ?? 0);
     if ($enrolment_id_upd <= 0) {
         echo json_encode(array('success' => false, 'message' => 'Invalid enrolment ID.'));
         exit;
@@ -2578,9 +2604,9 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
 
     // Photo upload — append new photos if any
     $photo_paths_upd = null;
+    $uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
+    if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
     if (!empty($_FILES['image']['name'][0])) {
-        $uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
-        if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
         $uploaded = array();
         foreach ($_FILES['image']['name'] as $k => $fileName) {
             $tmp = $_FILES['image']['tmp_name'][$k];
@@ -2590,6 +2616,16 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
             if (move_uploaded_file($tmp, $uploadDir . $uname)) $uploaded[] = $uname;
         }
         if (!empty($uploaded)) $photo_paths_upd = mysqli_real_escape_string($connection, json_encode($uploaded));
+    }
+
+    // Signature image upload — replace if new file provided
+    $signature_image_upd = null;
+    if (!empty($_FILES['signature_image']['tmp_name']) && is_uploaded_file($_FILES['signature_image']['tmp_name'])) {
+        $sig_ext   = strtolower(pathinfo($_FILES['signature_image']['name'], PATHINFO_EXTENSION));
+        $sig_uname = 'sig_' . rand(1000, 999999) . '_' . time() . '.' . $sig_ext;
+        if (move_uploaded_file($_FILES['signature_image']['tmp_name'], $uploadDir . $sig_uname)) {
+            $signature_image_upd = mysqli_real_escape_string($connection, $sig_uname);
+        }
     }
 
     $qualification_code_title    = mysqli_real_escape_string($connection, $d('qualification_code_title'));
@@ -2660,7 +2696,8 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
     $dob_val_upd   = $dob ? "'$dob'" : 'NULL';
     $cdate_val_upd = $candidate_date ? "'$candidate_date'" : 'NULL';
 
-    $photo_set = $photo_paths_upd ? ", photo_paths='$photo_paths_upd'" : '';
+    $photo_set     = $photo_paths_upd     ? ", photo_paths='$photo_paths_upd'"               : '';
+    $sig_image_set = $signature_image_upd ? ", signature_image='$signature_image_upd'" : '';
 
     $upd = "UPDATE enrolment_form_new SET
         qualification_code_title='$qualification_code_title',
@@ -2693,8 +2730,10 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
         refund_declaration=$refund_declaration,
         candidate_declaration=$candidate_declaration, candidate_full_name='$candidate_full_name',
         candidate_date=$cdate_val_upd, candidate_signature='$candidate_signature',
-        updated_status='resolve_query'
+        updated_status='resolve_query',
+        student_user_id=$student_user_id_upd
         $photo_set
+        $sig_image_set
         WHERE id=$enrolment_id_upd";
 
     if (!mysqli_query($connection, $upd)) {
@@ -3953,20 +3992,6 @@ if(@$_REQUEST['name']=='counselings'){
 
 
 
-if(@$_REQUEST['name']=='student_invoices'){
-    $invoices['data']=[];
-    $query=mysqli_query($connection,"SELECT * from invoices");
-    while($queryRes=mysqli_fetch_array($query)){
-
-        $courses=mysqli_fetch_array(mysqli_query($connection,"SELECT * from courses where course_status!=1 AND course_id=".$queryRes['inv_course']));
-
-        array_push($invoices['data'],array('inv_id'=>$queryRes['inv_auto_id'],'inv_std_name'=>$queryRes['inv_std_name'], 'inv_fee'=>$queryRes['inv_fee'],'inv_paid'=>$queryRes['inv_paid'],'inv_course'=>$courses['course_sname'].'-'.$courses['course_name'],'inv_due'=>$queryRes['inv_due'],'inv_payment_date'=>$queryRes['inv_payment_date']));
-        
-    }
-    header("Content-Type: application/json");
-    echo json_encode($invoices);
-}
-
 if(@$_REQUEST['name']=='student_enrol'){
     $enrol['data']=[];
     $query=mysqli_query($connection,"SELECT * from student_enrolment where st_enrol_status!=1");
@@ -4035,6 +4060,41 @@ if(@$_REQUEST['name']=='all_students'){
     echo json_encode($enrol);
 }
 
+// Handle invoices list request
+if(@$_REQUEST['name']=='invoices_list'){
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $invoices = array('data' => []);
+
+    $query = mysqli_query($connection,
+        "SELECT ei.*,
+                COALESCE(SUM(eis.amount), 0)     AS total_amount,
+                COALESCE(SUM(eis.gst_amount), 0) AS total_gst
+         FROM enrolment_invoices ei
+         LEFT JOIN enrolment_invoice_installments eis ON eis.invoice_id = ei.id
+         GROUP BY ei.id
+         ORDER BY ei.created_at DESC"
+    );
+    if ($query && mysqli_num_rows($query) > 0) {
+        while ($row = mysqli_fetch_assoc($query)) {
+            $invoices['data'][] = array(
+                'id'             => $row['id'],
+                'invoice_number' => $row['invoice_number'],
+                'student_name'   => $row['student_name'],
+                'student_id'     => $row['student_id'],
+                'email_address'  => $row['email_address'],
+                'total_due'      => $row['total_amount'],
+                'total_gst'      => $row['total_gst'],
+                'status'         => $row['status'],
+                'created_at'     => date('d M Y', strtotime($row['created_at']))
+            );
+        }
+    }
+
+    echo json_encode($invoices);
+    exit;
+}
 
 if(@$_POST['formName']=='lookupLoad'){
     if($_POST['selected']=='1'){
@@ -6907,6 +6967,48 @@ if(@$_POST['formName']=='create_question'){
     $correct_option = '';
     $correct_options_multi = null;
     
+    // ── Generic optional question image (all types) ──
+    $question_image_val = null;
+    $qi_upload_dir = __DIR__ . '/../uploads/question_images/';
+    if(!is_dir($qi_upload_dir)) { @mkdir($qi_upload_dir, 0777, true); }
+    if(isset($_FILES['question_image_file']) && $_FILES['question_image_file']['error'] === UPLOAD_ERR_OK) {
+        $qi_info = @getimagesize($_FILES['question_image_file']['tmp_name']);
+        $qi_allowed = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+        if($qi_info && in_array($qi_info[2], $qi_allowed) && $_FILES['question_image_file']['size'] <= 2*1024*1024) {
+            $qi_em  = [IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png',IMAGETYPE_GIF=>'gif',IMAGETYPE_WEBP=>'webp'];
+            $qi_ext = $qi_em[$qi_info[2]] ?? 'jpg';
+            $qi_fname = 'qimg_'.time().'_'.mt_rand(1000,9999).'.'.$qi_ext;
+            if(move_uploaded_file($_FILES['question_image_file']['tmp_name'], $qi_upload_dir.$qi_fname))
+                $question_image_val = mysqli_real_escape_string($connection, $qi_fname);
+        }
+    } elseif(isset($_POST['existing_question_image']) && $_POST['existing_question_image'] !== '') {
+        $question_image_val = mysqli_real_escape_string($connection, $_POST['existing_question_image']);
+    }
+
+    // Ensure correct_option_text column exists
+    $cot_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'correct_option_text'");
+    if($cot_chk && mysqli_num_rows($cot_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `correct_option_text` TEXT DEFAULT NULL");
+    }
+    // Ensure placeholder column exists
+    $ph_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'placeholder'");
+    if($ph_chk && mysqli_num_rows($ph_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `placeholder` VARCHAR(255) DEFAULT NULL");
+    }
+    // Ensure min/max columns exist
+    $min_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'min'");
+    if($min_chk && mysqli_num_rows($min_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `min` VARCHAR(50) DEFAULT NULL");
+    }
+    $max_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'max'");
+    if($max_chk && mysqli_num_rows($max_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `max` VARCHAR(50) DEFAULT NULL");
+    }
+    $correct_option_text = null;
+    $placeholder = null;
+    $num_min = null;
+    $num_max = null;
+
     if($question_type == 1) {
         $correct_option = intval($_POST['correct_option']);
         if(empty($option_1) || empty($option_2) || empty($option_3) || empty($option_4) || $correct_option < 1 || $correct_option > 4){
@@ -6990,10 +7092,53 @@ if(@$_POST['formName']=='create_question'){
             echo 'Please fill all 4 option fields and select the correct answer.';
             exit;
         }
+    } elseif($question_type == 6) {
+        // Text – expected answer saved to correct_option_text (optional)
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 8) {
+        // URL – expected URL is mandatory
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+        if(empty($correct_option_text)) {
+            echo 'Expected URL is required';
+            exit;
+        }
+    } elseif($question_type == 7) {
+        // Number – min, max, placeholder and expected answer saved to dedicated columns
+        $num_min = mysqli_real_escape_string($connection, $_POST['min'] ?? '');
+        $num_max = mysqli_real_escape_string($connection, $_POST['max'] ?? '');
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 9) {
+        // Textarea – placeholder and model answer saved to dedicated columns
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 10) {
+        // Dropdown – all options in option_1 (JSON), correct option in correct_options_multi
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 11) {
+        // Radio – all options saved in option_1 (JSON), correct option saved in correct_option
+        $correct_option = mysqli_real_escape_string($connection, $_POST['correct_option'] ?? '');
+    } elseif($question_type == 12) {
+        // Checkbox – all options saved in option_1 (JSON), correct answers in correct_options_multi (JSON)
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 13) {
+        // Date – correct date saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 14) {
+        // Time – correct time saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 15) {
+        // DateTime – correct datetime saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
     }
 
-    $query = "INSERT INTO assessment_questions (assessment_id, question_type, question_text, option_1, option_2, option_3, option_4, correct_option, correct_options_multi, marks, status)
-              VALUES ($assessment_id, $question_type, '$question_text', " . ($option_1 ? "'$option_1'" : "NULL") . ", " . ($option_2 ? "'$option_2'" : "NULL") . ", " . ($option_3 ? "'$option_3'" : "NULL") . ", " . ($option_4 ? "'$option_4'" : "NULL") . ", " . ($correct_option !== '' ? "'$correct_option'" : "NULL") . ", " . ($correct_options_multi ? "'$correct_options_multi'" : "NULL") . ", $question_marks, 0)";
+    $qi_sql  = $question_image_val ? "'$question_image_val'" : "NULL";
+    $cot_sql = $correct_option_text ? "'$correct_option_text'" : "NULL";
+    $ph_sql  = $placeholder ? "'$placeholder'" : "NULL";
+    $min_sql = $num_min !== null && $num_min !== '' ? "'$num_min'" : "NULL";
+    $max_sql = $num_max !== null && $num_max !== '' ? "'$num_max'" : "NULL";
+    $query = "INSERT INTO assessment_questions (assessment_id, question_type, question_text, option_1, option_2, option_3, option_4, correct_option, correct_options_multi, question_image, correct_option_text, placeholder, `min`, `max`, marks, status)
+              VALUES ($assessment_id, $question_type, '$question_text', " . ($option_1 ? "'$option_1'" : "NULL") . ", " . ($option_2 ? "'$option_2'" : "NULL") . ", " . ($option_3 ? "'$option_3'" : "NULL") . ", " . ($option_4 ? "'$option_4'" : "NULL") . ", " . ($correct_option !== '' ? "'$correct_option'" : "NULL") . ", " . ($correct_options_multi ? "'$correct_options_multi'" : "NULL") . ", $qi_sql, $cot_sql, $ph_sql, $min_sql, $max_sql, $question_marks, 0)";
 
     $result = mysqli_query($connection, $query);
 
@@ -7065,7 +7210,52 @@ if(@$_POST['formName']=='update_question'){
     $option_4 = isset($_POST['option_4']) ? mysqli_real_escape_string($connection, $_POST['option_4']) : null;
     $correct_option = '';
     $correct_options_multi = null;
-    
+
+    // ── Generic optional question image (all types) ──
+    $question_image_val = null; // null = no change to column
+    $qi_upload_dir = __DIR__ . '/../uploads/question_images/';
+    if(!is_dir($qi_upload_dir)) { @mkdir($qi_upload_dir, 0777, true); }
+    if(isset($_FILES['question_image_file']) && $_FILES['question_image_file']['error'] === UPLOAD_ERR_OK) {
+        $qi_info = @getimagesize($_FILES['question_image_file']['tmp_name']);
+        $qi_allowed = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+        if($qi_info && in_array($qi_info[2], $qi_allowed) && $_FILES['question_image_file']['size'] <= 2*1024*1024) {
+            $qi_em  = [IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png',IMAGETYPE_GIF=>'gif',IMAGETYPE_WEBP=>'webp'];
+            $qi_ext = $qi_em[$qi_info[2]] ?? 'jpg';
+            $qi_fname = 'qimg_'.time().'_'.mt_rand(1000,9999).'.'.$qi_ext;
+            if(move_uploaded_file($_FILES['question_image_file']['tmp_name'], $qi_upload_dir.$qi_fname))
+                $question_image_val = mysqli_real_escape_string($connection, $qi_fname);
+        }
+    } elseif(isset($_POST['existing_question_image'])) {
+        // empty string = user removed image; non-empty = keep existing
+        $question_image_val = $_POST['existing_question_image'] !== ''
+            ? mysqli_real_escape_string($connection, $_POST['existing_question_image'])
+            : ''; // '' signals clear
+    }
+
+    // Ensure correct_option_text column exists
+    $cot_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'correct_option_text'");
+    if($cot_chk2 && mysqli_num_rows($cot_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `correct_option_text` TEXT DEFAULT NULL");
+    }
+    // Ensure placeholder column exists
+    $ph_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'placeholder'");
+    if($ph_chk2 && mysqli_num_rows($ph_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `placeholder` VARCHAR(255) DEFAULT NULL");
+    }
+    // Ensure min/max columns exist
+    $min_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'min'");
+    if($min_chk2 && mysqli_num_rows($min_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `min` VARCHAR(50) DEFAULT NULL");
+    }
+    $max_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'max'");
+    if($max_chk2 && mysqli_num_rows($max_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `max` VARCHAR(50) DEFAULT NULL");
+    }
+    $correct_option_text = null;
+    $placeholder = null;
+    $num_min = null;
+    $num_max = null;
+
     if($question_type == 1) {
         $correct_option = intval($_POST['correct_option']);
     } elseif($question_type == 2) {
@@ -7099,6 +7289,44 @@ if(@$_POST['formName']=='update_question'){
             echo 'An image is required for image-based questions.'; exit;
         }
         $correct_option = intval($_POST['correct_option'] ?? 0);
+    } elseif($question_type == 6) {
+        // Text – expected answer saved to correct_option_text (optional)
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 8) {
+        // URL – expected URL is mandatory
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+        if(empty($correct_option_text)) {
+            echo 'Expected URL is required';
+            exit;
+        }
+    } elseif($question_type == 7) {
+        // Number – min, max, placeholder and expected answer saved to dedicated columns
+        $num_min = mysqli_real_escape_string($connection, $_POST['min'] ?? '');
+        $num_max = mysqli_real_escape_string($connection, $_POST['max'] ?? '');
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 9) {
+        // Textarea – placeholder and model answer saved to dedicated columns
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 10) {
+        // Dropdown – all options in option_1 (JSON), correct option in correct_options_multi
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 11) {
+        // Radio – all options saved in option_1 (JSON), correct option saved in correct_option
+        $correct_option = mysqli_real_escape_string($connection, $_POST['correct_option'] ?? '');
+    } elseif($question_type == 12) {
+        // Checkbox – all options saved in option_1 (JSON), correct answers in correct_options_multi (JSON)
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 13) {
+        // Date – correct date saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 14) {
+        // Time – correct time saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 15) {
+        // DateTime – correct datetime saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
     }
 
     $o1 = $option_1 ? "'$option_1'" : "NULL";
@@ -7107,17 +7335,31 @@ if(@$_POST['formName']=='update_question'){
     $o4 = $option_4 ? "'$option_4'" : "NULL";
     $co = $correct_option ? "'$correct_option'" : "NULL";
     $com = $correct_options_multi ? "'$correct_options_multi'" : "NULL";
-    
-    $query = "UPDATE assessment_questions SET 
+    $cot_sql2  = $correct_option_text ? "'$correct_option_text'" : "NULL";
+    $ph_sql2   = $placeholder ? "'$placeholder'" : "NULL";
+    $min_sql2  = $num_min !== null && $num_min !== '' ? "'$num_min'" : "NULL";
+    $max_sql2  = $num_max !== null && $num_max !== '' ? "'$num_max'" : "NULL";
+    // question_image: null = don't touch, '' = set NULL, 'filename' = set value
+    $qi_set = '';
+    if($question_image_val !== null) {
+        $qi_set = ', question_image=' . ($question_image_val !== '' ? "'$question_image_val'" : 'NULL');
+    }
+
+    $query = "UPDATE assessment_questions SET
               question_type = $question_type,
-              question_text = '$question_text', 
-              option_1 = $o1, 
-              option_2 = $o2, 
-              option_3 = $o3, 
-              option_4 = $o4, 
-              correct_option = $co, 
+              question_text = '$question_text',
+              option_1 = $o1,
+              option_2 = $o2,
+              option_3 = $o3,
+              option_4 = $o4,
+              correct_option = $co,
               correct_options_multi = $com,
-              marks = $question_marks 
+              correct_option_text = $cot_sql2,
+              placeholder = $ph_sql2,
+              `min` = $min_sql2,
+              `max` = $max_sql2,
+              marks = $question_marks
+              $qi_set
               WHERE question_id = $question_id AND assessment_id = $assessment_id";
     
     $result = mysqli_query($connection, $query);
@@ -7127,6 +7369,53 @@ if(@$_POST['formName']=='update_question'){
     } else {
         echo mysqli_error($connection);
     }
+    exit;
+}
+
+// Save Text Grade (manual grading for question type 4)
+if(@$_POST['formName']=='save_text_grade'){
+    ob_clean();
+    header('Content-Type: application/json');
+    $answer_id      = intval($_POST['answer_id']);
+    $submission_id  = intval($_POST['submission_id']);
+    $is_correct     = intval($_POST['is_correct']) ? 1 : 0;
+    $marks_obtained = floatval($_POST['marks_obtained']);
+
+    // Update is_correct and marks_obtained for this answer row
+    $upd = mysqli_query($connection,
+        "UPDATE assessment_answers
+         SET is_correct = $is_correct, marks_obtained = $marks_obtained
+         WHERE answer_id = $answer_id");
+
+    if(!$upd){
+        echo json_encode(['success'=>false,'message'=>mysqli_error($connection)]);
+        exit;
+    }
+
+    // Get assessment_id and student_enrol_id from this answer to recalculate totals
+    $ansRow = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT assessment_id, student_enrol_id FROM assessment_answers WHERE answer_id = $answer_id LIMIT 1"));
+    $aid  = intval($ansRow['assessment_id'] ?? 0);
+    $seid = intval($ansRow['student_enrol_id'] ?? 0);
+
+    // Sum all marks_obtained for this student's answers in this assessment
+    $totRow = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT SUM(marks_obtained) AS total FROM assessment_answers
+         WHERE assessment_id = $aid AND student_enrol_id = $seid"));
+    $obtained = floatval($totRow['total'] ?? 0);
+
+    // Get total_marks from the submission to compute percentage
+    $subRow = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT total_marks FROM assessment_submissions WHERE submission_id = $submission_id LIMIT 1"));
+    $total = floatval($subRow['total_marks'] ?? 0);
+    $percentage = ($total > 0) ? round(($obtained / $total) * 100, 2) : 0;
+
+    mysqli_query($connection,
+        "UPDATE assessment_submissions
+         SET obtained_marks = $obtained, percentage = $percentage
+         WHERE submission_id = $submission_id");
+
+    echo json_encode(['success'=>true]);
     exit;
 }
 
@@ -7150,11 +7439,30 @@ if(@$_GET['name']=='questionList'){
             'option_3' => htmlspecialchars($row['option_3']),
             'option_4' => htmlspecialchars($row['option_4']),
             'correct_option' => $row['correct_option'],
+            'correct_options_multi' => $row['correct_options_multi'],
+            'correct_option_text' => $row['correct_option_text'],
+            'placeholder' => $row['placeholder'],
+            'min' => $row['min'],
+            'max' => $row['max'],
             'marks' => $row['marks']
         );
     }
     
     echo json_encode(array('questions' => $questions));
+    exit;
+}
+
+// Fetch correct_option for a single question (used for True/False edit pre-fill)
+if(@$_GET['name']=='getQuestionAnswer'){
+    ob_clean();
+    header('Content-Type: application/json');
+    $question_id = intval($_GET['question_id']);
+    $result = mysqli_query($connection, "SELECT correct_option FROM assessment_questions WHERE question_id = $question_id LIMIT 1");
+    if($result && $row = mysqli_fetch_assoc($result)){
+        echo json_encode(array('correct_option' => $row['correct_option']));
+    } else {
+        echo json_encode(array('correct_option' => ''));
+    }
     exit;
 }
 
@@ -7390,20 +7698,29 @@ if(@$_POST['formName']=='submit_assessment'){
         
         if($student_answer_text){
             $attempted_questions++;
-            if($question_type == 1){
-                // Single Choice
+            if($question_type == 1 || $question_type == 5){
+                // Single Choice / Image Based – answer is option number
                 if($student_answer_text == $question['correct_option']){
                     $is_correct = 1;
                     $marks_obtained = $question_marks;
                 }
             } elseif($question_type == 2){
-                // True/False
-                if($student_answer_text == $question['correct_option']){
+                // True/False – student sends "1" (True) or "2" (False);
+                // correct_option stored as "True"/"False" or "1"/"0" — normalise both sides
+                $sa_tf = strtolower(trim($student_answer_text));
+                if($sa_tf == '1') $sa_tf = 'true';
+                elseif($sa_tf == '2') $sa_tf = 'false';
+
+                $co_tf = strtolower(trim($question['correct_option'] ?? ''));
+                if($co_tf == '1') $co_tf = 'true';
+                elseif($co_tf == '0' || $co_tf == '2') $co_tf = 'false';
+
+                if($sa_tf !== '' && $sa_tf == $co_tf){
                     $is_correct = 1;
                     $marks_obtained = $question_marks;
                 }
             } elseif($question_type == 3){
-                // Multiple Choice - check all correct options
+                // Multiple Choice – both sides are JSON arrays of 1-based option indices
                 $correct_multi = json_decode($question['correct_options_multi'] ?? '[]', true);
                 $student_multi = json_decode($student_answer_text, true);
                 if(is_array($correct_multi) && is_array($student_multi)){
@@ -7415,10 +7732,119 @@ if(@$_POST['formName']=='submit_assessment'){
                     }
                 }
             } elseif($question_type == 4){
-                // Text Answer - case insensitive check
-                if(strtolower(trim($student_answer_text)) == strtolower(trim($question['correct_option']))){
+                // Text Answer – case-insensitive match against correct_options_multi (expected answer)
+                $expected4 = trim($question['correct_options_multi'] ?? $question['correct_option'] ?? '');
+                if($expected4 !== '' && strtolower(trim($student_answer_text)) == strtolower($expected4)){
                     $is_correct = 1;
                     $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 6){
+                // Text – case-insensitive match against correct_option_text
+                $expected6 = trim($question['correct_option_text'] ?? '');
+                if($expected6 !== '' && strtolower(trim($student_answer_text)) == strtolower($expected6)){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 7){
+                // Number – exact match AND/OR within min–max range
+                $expected7 = trim($question['correct_option_text'] ?? '');
+                $min7 = trim($question['min'] ?? '');
+                $max7 = trim($question['max'] ?? '');
+                if($expected7 !== '' || $min7 !== '' || $max7 !== ''){
+                    $stu_num = floatval($student_answer_text);
+                    $ok7 = true;
+                    if($expected7 !== '' && is_numeric($expected7)){
+                        if(abs($stu_num - floatval($expected7)) > 0.000001) $ok7 = false;
+                    }
+                    if($min7 !== '' && is_numeric($min7) && $stu_num < floatval($min7)) $ok7 = false;
+                    if($max7 !== '' && is_numeric($max7) && $stu_num > floatval($max7)) $ok7 = false;
+                    if($ok7){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
+                }
+            } elseif($question_type == 8){
+                // URL – case-insensitive, strip trailing slash
+                $expected8 = rtrim(strtolower(trim($question['correct_option_text'] ?? '')), '/');
+                $student8  = rtrim(strtolower(trim($student_answer_text)), '/');
+                if($expected8 !== '' && $student8 == $expected8){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 9){
+                // Textarea (essay/code) – requires manual grading, skip auto-grade
+            } elseif($question_type == 10){
+                // Dropdown – student answer is option TEXT; correct_options_multi has 1-based indices
+                $all_opts10  = json_decode($question['option_1'] ?? '[]', true) ?: [];
+                $corr_idx10  = json_decode($question['correct_options_multi'] ?? '[]', true) ?: [];
+                $corr_texts10 = [];
+                foreach($corr_idx10 as $ci){
+                    $idx = intval($ci) - 1;
+                    if(isset($all_opts10[$idx])) $corr_texts10[] = strtolower(trim($all_opts10[$idx]));
+                }
+                if(count($corr_texts10) && in_array(strtolower(trim($student_answer_text)), $corr_texts10)){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 11){
+                // Radio – student answer is option TEXT; correct_option has 1-based index
+                $all_opts11 = json_decode($question['option_1'] ?? '[]', true) ?: [];
+                $corr_idx11 = intval($question['correct_option'] ?? 0) - 1;
+                $corr_text11 = isset($all_opts11[$corr_idx11]) ? strtolower(trim($all_opts11[$corr_idx11])) : '';
+                if($corr_text11 !== '' && strtolower(trim($student_answer_text)) == $corr_text11){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 12){
+                // Checkbox – student answer is JSON array of option TEXTS;
+                // correct_options_multi has 1-based indices → resolve to texts, then compare
+                $all_opts12  = json_decode($question['option_1'] ?? '[]', true) ?: [];
+                $corr_idx12  = json_decode($question['correct_options_multi'] ?? '[]', true) ?: [];
+                $corr_texts12 = [];
+                foreach($corr_idx12 as $ci){
+                    $idx = intval($ci) - 1;
+                    if(isset($all_opts12[$idx])) $corr_texts12[] = strtolower(trim($all_opts12[$idx]));
+                }
+                sort($corr_texts12);
+                $stu_selected12 = json_decode($student_answer_text, true) ?: [];
+                $stu_texts12 = array_map(fn($t) => strtolower(trim($t)), $stu_selected12);
+                sort($stu_texts12);
+                if(count($corr_texts12) && $corr_texts12 == $stu_texts12){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 13){
+                // Date – compare as Y-m-d
+                $expected13 = trim($question['correct_option_text'] ?? '');
+                if($expected13 !== ''){
+                    $exp_ts13 = strtotime($expected13);
+                    $stu_ts13 = strtotime($student_answer_text);
+                    if($exp_ts13 && $stu_ts13 && date('Y-m-d', $exp_ts13) == date('Y-m-d', $stu_ts13)){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
+                }
+            } elseif($question_type == 14){
+                // Time – compare as H:i
+                $expected14 = trim($question['correct_option_text'] ?? '');
+                if($expected14 !== ''){
+                    $exp_ts14 = strtotime('2000-01-01 ' . $expected14);
+                    $stu_ts14 = strtotime('2000-01-01 ' . $student_answer_text);
+                    if($exp_ts14 && $stu_ts14 && date('H:i', $exp_ts14) == date('H:i', $stu_ts14)){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
+                }
+            } elseif($question_type == 15){
+                // Date & Time – compare as Y-m-d H:i
+                $expected15 = trim($question['correct_option_text'] ?? '');
+                if($expected15 !== ''){
+                    $exp_ts15 = strtotime($expected15);
+                    $stu_ts15 = strtotime($student_answer_text);
+                    if($exp_ts15 && $stu_ts15 && date('Y-m-d H:i', $exp_ts15) == date('Y-m-d H:i', $stu_ts15)){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
                 }
             }
         } else {
@@ -7442,7 +7868,7 @@ if(@$_POST['formName']=='submit_assessment'){
         $query = "UPDATE assessment_submissions SET total_marks = $total_marks, obtained_marks = $obtained_marks, percentage = $percentage, status = 1, attempted_questions = $attempted_questions, pending_questions = $pending_questions, submitted_at = NOW() WHERE assessment_id = $assessment_id AND student_enrol_id = $student_enrol_id";
         $query1 = "UPDATE `assessment_assignments` SET `assessment_count`= $assessment_count WHERE assessment_id = $assessment_id AND student_enrol_id = $student_enrol_id"; 
         } else {
-        $query = "INSERT INTO assessment_submissions (assessment_id, student_enrol_id, total_marks, obtained_marks, percentage, status, attempted_questions, pending_questions) VALUES ($assessment_id, $student_enrol_id, $total_marks, $obtained_marks, $percentage, 1, $attempted_questions, $pending_questions)";
+        $query = "INSERT INTO assessment_submissions (assessment_id, student_enrol_id, total_marks, obtained_marks, percentage, status, attempted_questions, pending_questions, submitted_at) VALUES ($assessment_id, $student_enrol_id, $total_marks, $obtained_marks, $percentage, 1, $attempted_questions, $pending_questions, NOW())";
     $query1 = "UPDATE `assessment_assignments` SET `assessment_count`= $assessment_count WHERE assessment_id = $assessment_id AND student_enrol_id = $student_enrol_id"; 
        
         }
@@ -7747,104 +8173,6 @@ if (@$_POST['action'] == 'resolve_enrolment_query') {
     exit;
 }
 
-// Admin – Mark invoice as paid
-if (@$_POST['action'] === 'admin_mark_invoice_paid') {
-    ob_clean();
-    header('Content-Type: application/json');
-    $invoice_id = intval($_POST['invoice_id'] ?? 0);
-    if ($invoice_id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid ID']); exit; }
-    $ok = mysqli_query($connection,
-        "UPDATE student_invoices
-         SET status = 'paid', paid_amount = total_due
-         WHERE id = $invoice_id LIMIT 1"
-    );
-    echo json_encode(['success' => (bool)$ok, 'message' => $ok ? '' : mysqli_error($connection)]);
-    exit;
-}
-
-// Admin – Delete invoice
-if (@$_POST['action'] === 'admin_delete_invoice') {
-    ob_clean();
-    header('Content-Type: application/json');
-    $invoice_id = intval($_POST['invoice_id'] ?? 0);
-    if ($invoice_id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid ID']); exit; }
-    $ok = mysqli_query($connection, "DELETE FROM student_invoices WHERE id = $invoice_id LIMIT 1");
-    echo json_encode(['success' => (bool)$ok, 'message' => $ok ? '' : mysqli_error($connection)]);
-    exit;
-}
-
-// Submit Student Payment Request
-if(@$_POST['formName'] == 'submit_student_payment'){
-    ob_start(); ob_clean();
-    header('Content-Type: application/json');
-
-    $enrolment_db_id  = intval($_POST['enrolment_db_id'] ?? 0);
-    $invoice_number   = mysqli_real_escape_string($connection, $_POST['invoice_number']   ?? '');
-    $student_name     = mysqli_real_escape_string($connection, $_POST['student_name']     ?? '');
-    $student_id       = mysqli_real_escape_string($connection, $_POST['student_id']       ?? '');
-    $email_address    = mysqli_real_escape_string($connection, $_POST['email_address']    ?? '');
-    $course_enrolled  = mysqli_real_escape_string($connection, $_POST['course_enrolled']  ?? '');
-    $enrolment_ref    = mysqli_real_escape_string($connection, $_POST['enrolment_id']     ?? '');
-    $branch           = mysqli_real_escape_string($connection, $_POST['branch']           ?? '');
-    $issue_date       = mysqli_real_escape_string($connection, $_POST['issue_date']       ?? '');
-    $due_date         = mysqli_real_escape_string($connection, $_POST['due_date']         ?? '');
-    $payment_terms    = mysqli_real_escape_string($connection, $_POST['payment_terms']    ?? '');
-    $invoice_type     = mysqli_real_escape_string($connection, $_POST['invoice_type']     ?? '');
-    $payment_method   = mysqli_real_escape_string($connection, $_POST['payment_method']   ?? '');
-    $funding_type     = mysqli_real_escape_string($connection, $_POST['funding_type']     ?? '');
-    $currency         = mysqli_real_escape_string($connection, $_POST['currency']         ?? 'AUD');
-    $discount         = floatval($_POST['discount']    ?? 0);
-    $subtotal         = floatval($_POST['subtotal']    ?? 0);
-    $gst_amount       = floatval($_POST['gst_amount']  ?? 0);
-    $total_due        = floatval($_POST['total_due']   ?? 0);
-
-    if($enrolment_db_id <= 0 || empty($invoice_number)) {
-        echo json_encode(['success' => false, 'message' => 'Invalid submission data.']);
-        exit;
-    }
-
-    // Build line items JSON
-    $descs  = $_POST['li_desc']   ?? [];
-    $units  = $_POST['li_unit']   ?? [];
-    $qtys   = $_POST['li_qty']    ?? [];
-    $prices = $_POST['li_price']  ?? [];
-    $gsts   = $_POST['li_gst']    ?? [];
-    $amts   = $_POST['li_amount'] ?? [];
-    $line_items = [];
-    foreach($descs as $i => $desc) {
-        if(trim($desc) === '') continue;
-        $line_items[] = [
-            'description' => $desc,
-            'unit'        => $units[$i]  ?? '',
-            'qty'         => floatval($qtys[$i]   ?? 1),
-            'unit_price'  => floatval($prices[$i] ?? 0),
-            'gst'         => $gsts[$i]  ?? 'No',
-            'amount'      => floatval($amts[$i]   ?? 0),
-        ];
-    }
-    $line_items_json = mysqli_real_escape_string($connection, json_encode($line_items));
-
-    $ins = mysqli_query($connection,
-        "INSERT INTO student_invoices
-         (enrolment_db_id, invoice_number, student_name, student_id, email_address,
-          course_enrolled, enrolment_ref, branch, issue_date, due_date,
-          payment_terms, invoice_type, payment_method, funding_type, currency,
-          line_items, subtotal, gst_amount, discount, total_due, status)
-         VALUES
-         ($enrolment_db_id, '$invoice_number', '$student_name', '$student_id', '$email_address',
-          '$course_enrolled', '$enrolment_ref', '$branch', '$issue_date', '$due_date',
-          '$payment_terms', '$invoice_type', '$payment_method', '$funding_type', '$currency',
-          '$line_items_json', $subtotal, $gst_amount, $discount, $total_due, 'pending')"
-    );
-
-    if($ins) {
-        echo json_encode(['success' => true, 'invoice_id' => mysqli_insert_id($connection)]);
-    } else {
-        echo json_encode(['success' => false, 'message' => mysqli_error($connection)]);
-    }
-    exit;
-}
-
 // Assessment Pass
 if(@$_POST['action'] == 'assessment_pass'){
     ob_clean();
@@ -7971,5 +8299,102 @@ if(@$_POST['action'] == 'assessment_manual_pass'){
     }
     exit;
 }
+
+// ─── Auto-create invoice tables ──────────────────────────────────────────────
+mysqli_query($connection, "CREATE TABLE IF NOT EXISTS `invoices` (
+    `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `invoice_number`  VARCHAR(30)  NOT NULL UNIQUE,
+    `enrolment_id`    INT UNSIGNED NOT NULL,
+    `student_name`    VARCHAR(200) NOT NULL DEFAULT '',
+    `student_id`      VARCHAR(50)  NOT NULL DEFAULT '',
+    `email_address`   VARCHAR(150) NOT NULL DEFAULT '',
+    `status`          ENUM('pending','paid','overdue') NOT NULL DEFAULT 'pending',
+    `created_by`      INT UNSIGNED DEFAULT NULL,
+    `created_at`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_enrolment` (`enrolment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+mysqli_query($connection, "CREATE TABLE IF NOT EXISTS `invoice_installments` (
+    `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `invoice_id`    INT UNSIGNED NOT NULL,
+    `course_id`     INT UNSIGNED DEFAULT NULL,
+    `invoice_type`  VARCHAR(60)  NOT NULL DEFAULT '',
+    `funding_type`  VARCHAR(60)  NOT NULL DEFAULT '',
+    `currency`      VARCHAR(10)  NOT NULL DEFAULT 'AUD',
+    `amount`        DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `gst_amount`    DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `issue_date`    DATE DEFAULT NULL,
+    `due_date`      DATE DEFAULT NULL,
+    `status`        ENUM('pending','paid') NOT NULL DEFAULT 'pending',
+    `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_invoice` (`invoice_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Create Invoice handler ───────────────────────────────────────────────────
+if (@$_POST['formName'] === 'create_invoice') {
+    header('Content-Type: application/json; charset=UTF-8');
+
+    $enrolment_id  = isset($_POST['enrolment_id']) ? intval($_POST['enrolment_id']) : 0;
+    $installments  = isset($_POST['installments_json']) ? json_decode($_POST['installments_json'], true) : [];
+
+    if ($enrolment_id <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Invalid enrolment.']);
+        exit;
+    }
+    if (empty($installments) || !is_array($installments)) {
+        echo json_encode(['success' => false, 'message' => 'No installments provided.']);
+        exit;
+    }
+
+    // Fetch student details
+    $enr = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT given_name, surname, office_student_id, email_address FROM enrolment_form_new WHERE id = $enrolment_id LIMIT 1"
+    ));
+    if (!$enr) {
+        echo json_encode(['success' => false, 'message' => 'Enrolment not found.']);
+        exit;
+    }
+
+    $student_name = mysqli_real_escape_string($connection, trim($enr['given_name'] . ' ' . $enr['surname']));
+    $student_id   = mysqli_real_escape_string($connection, $enr['office_student_id']);
+    $email        = mysqli_real_escape_string($connection, $enr['email_address']);
+    $created_by   = intval($_SESSION['user_id'] ?? 0);
+    $inv_number   = 'INV-' . strtoupper(substr(md5(uniqid()), 0, 8));
+
+    // Insert invoice header
+    $ok = mysqli_query($connection,
+        "INSERT INTO invoices (invoice_number, enrolment_id, student_name, student_id, email_address, created_by)
+         VALUES ('$inv_number', $enrolment_id, '$student_name', '$student_id', '$email', $created_by)"
+    );
+    if (!$ok) {
+        echo json_encode(['success' => false, 'message' => 'Could not create invoice: ' . mysqli_error($connection)]);
+        exit;
+    }
+    $invoice_id = mysqli_insert_id($connection);
+
+    // Insert installments
+    foreach ($installments as $inst) {
+        $course_id    = !empty($inst['course_id'])    ? intval($inst['course_id'])                                          : 'NULL';
+        $inv_type     = mysqli_real_escape_string($connection, trim($inst['invoice_type']  ?? ''));
+        $fund_type    = mysqli_real_escape_string($connection, trim($inst['funding_type']  ?? ''));
+        $currency     = mysqli_real_escape_string($connection, trim($inst['currency']      ?? 'AUD'));
+        $amount       = round(floatval($inst['amount']     ?? 0), 2);
+        $gst_amount   = round(floatval($inst['gst_amount'] ?? 0), 2);
+        $issue_date   = !empty($inst['issue_date']) ? "'" . mysqli_real_escape_string($connection, $inst['issue_date']) . "'" : 'NULL';
+        $due_date     = !empty($inst['due_date'])   ? "'" . mysqli_real_escape_string($connection, $inst['due_date'])   . "'" : 'NULL';
+
+        mysqli_query($connection,
+            "INSERT INTO invoice_installments
+                (invoice_id, course_id, invoice_type, funding_type, currency, amount, gst_amount, issue_date, due_date)
+             VALUES
+                ($invoice_id, $course_id, '$inv_type', '$fund_type', '$currency', $amount, $gst_amount, $issue_date, $due_date)"
+        );
+    }
+
+    echo json_encode(['success' => true, 'invoice_number' => $inv_number, 'invoice_id' => $invoice_id]);
+    exit;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 ?>

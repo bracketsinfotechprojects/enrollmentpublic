@@ -505,6 +505,19 @@ $photos = json_decode($r['photo_paths'] ?? '[]', true) ?: [];
                             <div class="field-label">Signature</div>
                             <div class="field-value"><?php echo val($r['candidate_signature']); ?></div>
                         </div>
+                        <?php if (!empty($r['signature_image'])): ?>
+                        <div class="col-md-3">
+                            <div class="field-label">Signature Image</div>
+                            <div class="field-value mt-1">
+                                <img src="uploads/<?php echo htmlspecialchars($r['signature_image']); ?>"
+                                     alt="Signature Image"
+                                     class="img-thumbnail sig-zoom-thumb"
+                                     style="max-height:80px;max-width:220px;cursor:zoom-in;transition:box-shadow .15s;"
+                                     data-src="uploads/<?php echo htmlspecialchars($r['signature_image']); ?>"
+                                     onerror="this.style.display='none'">
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -514,10 +527,12 @@ $photos = json_decode($r['photo_paths'] ?? '[]', true) ?: [];
                 <div class="section-body">
                     <div class="d-flex flex-wrap gap-3">
                         <?php foreach ($photos as $photo): ?>
-                        <a href="uploads/<?php echo htmlspecialchars($photo); ?>" target="_blank">
-                            <img src="uploads/<?php echo htmlspecialchars($photo); ?>"
-                                 alt="Photo" style="height:100px;width:auto;border-radius:6px;border:1px solid #dee2e6;">
-                        </a>
+                        <img src="uploads/<?php echo htmlspecialchars($photo); ?>"
+                             alt="Photo"
+                             class="photo-thumb"
+                             data-src="uploads/<?php echo htmlspecialchars($photo); ?>"
+                             style="height:100px;width:auto;border-radius:6px;border:1px solid #dee2e6;cursor:zoom-in;transition:box-shadow .15s,transform .15s;"
+                             onerror="this.style.display='none'">
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -660,6 +675,53 @@ $(function(){
                 $btn.prop('disabled', false).html('<i class="ti ti-check me-1"></i>Complete Enrolment');
             }
         });
+    });
+});
+</script>
+<!-- Signature Lightbox Modal -->
+<div class="modal fade" id="sigLightboxModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:90vw;width:auto;">
+        <div class="modal-content bg-transparent border-0 shadow-none">
+            <div class="modal-body p-0 text-center position-relative">
+                <button type="button" class="btn-close btn-close-black position-absolute"
+                        data-bs-dismiss="modal"
+                        style="top:-10px;right:-10px;background-color:#f2eded;border-radius:50%;padding:8px;z-index:10;"></button>
+                <img id="sigLightboxImg" src="" alt="Signature"
+                     style="max-width:90vw;max-height:85vh;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,.6);">
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+.sig-zoom-thumb:hover { box-shadow: 0 0 0 3px #0d6efd55; }
+.photo-thumb:hover { box-shadow: 0 4px 16px rgba(0,0,0,.22); transform: scale(1.04); }
+</style>
+<!-- Photo Lightbox Modal -->
+<div class="modal fade" id="photoLightboxModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:90vw;width:auto;">
+        <div class="modal-content bg-transparent border-0 shadow-none">
+            <div class="modal-body p-0 text-center position-relative">
+                <button type="button" class="btn-close btn-close-white position-absolute"
+                        data-bs-dismiss="modal"
+                        style="top:-10px;right:-10px;background-color:#333;border-radius:50%;padding:8px;z-index:10;"></button>
+                <img id="photoLightboxImg" src="" alt="Photo"
+                     style="max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);">
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+$(function(){
+    $(document).on('click', '.sig-zoom-thumb', function(){
+        $('#sigLightboxImg').attr('src', $(this).data('src'));
+        var modal = new bootstrap.Modal(document.getElementById('sigLightboxModal'));
+        modal.show();
+    });
+
+    $(document).on('click', '.photo-thumb', function(){
+        $('#photoLightboxImg').attr('src', $(this).data('src'));
+        var modal = new bootstrap.Modal(document.getElementById('photoLightboxModal'));
+        modal.show();
     });
 });
 </script>

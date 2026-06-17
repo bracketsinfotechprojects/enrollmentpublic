@@ -556,7 +556,7 @@
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <div class="col-md-12 visa_note" style="display:<?php echo $visaRes['visa_status_name']==7 ? '' : 'none'; ?>">
+                                                                <div class="col-md-12 visa_note" style="display:<?php echo (!empty($queryRes['st_visa_status']) && $queryRes['st_visa_status']==7) ? '' : 'none'; ?>">
                                                                     <div class="mb-3">
                                                                         <label class="form-label" for="visa_note">Specify Visa Status</label>
                                                                         <input type="text" class="form-control" id="visa_note" value="<?php echo $queryRes['st_visa_note']; ?>" placeholder="Visa Note">
@@ -610,14 +610,9 @@
                                                                                 <label class="form-label" for="courses">Which Course are you interested in?<span class="asterisk">*</span></label>
                                                                                 <?php 
                                                                                 $counts=1;
+                                                                                $_decoded_courses = !empty($queryRes['st_course']) ? json_decode($queryRes['st_course']) : null;
+                                                                                $coursesSel = is_array($_decoded_courses) ? $_decoded_courses : [];
                                                                                 while($coursesRes=mysqli_fetch_array($courses)){
-
-                                                                                    if($queryRes['st_course']!=''){
-                                                                                        $coursesSel=json_decode($queryRes['st_course']);
-                                                                                    }else{
-                                                                                        $coursesSel=[];   
-                                                                                    }
-                                                                                                                                        
                                                                                     if(in_array($counts,$coursesSel)){
                                                                                         $checked='checked';
                                                                                     }else{
@@ -704,11 +699,8 @@
                                                         <label class="form-label" for="remarks">Remarks</label>
                                                         <?php
                                                         $st_remarks=['Seems to be interested to do course and need to contact asap','contacted and followed','Selected - Good with communication skills','Sent enrollement form online/ hard copies','Want to do the course asap','not interested much','Looking for government funding','Have done counselling before but wants to get more info','Counseling is done but enrolment is due','Have done the counselling before','Seems like having attitude','Want to book an appointment for counselling','Will callus back again','Planning to relocate to other state','Wants to get COE for visa purpose','Rejected - "Reasons mentioned in comments" or " ReCounseliing needed"'];
-                                                        if(!empty($queryRes['st_remarks'])){
-                                                            $remarksSel=json_decode($queryRes['st_remarks']);
-                                                        }else{
-                                                            $remarksSel=array();
-                                                        }
+                                                        $_decoded_remarks = !empty($queryRes['st_remarks']) ? json_decode($queryRes['st_remarks']) : null;
+                                                        $remarksSel = is_array($_decoded_remarks) ? $_decoded_remarks : [];
                                                         for($i=1;$i<count($st_remarks);$i++){
                                                             $checked = (!empty($remarksSel) && in_array($i,$remarksSel)) ? 'checked' : '';
                                                             echo '<div class="form-check"><input type="checkbox" class="remarks_check form-check-input" id="remark_check_'.$i.'" '.$checked.' value="'.$i.'">';

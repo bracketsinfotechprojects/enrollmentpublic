@@ -639,7 +639,6 @@ if(isset($_SESSION['user_type'])){
                 
                 // $('#datatable_invoices').DataTable({lengthMenu: [5, 10, 20],language:{paginate:{previous:"<i class='mdi mdi-chevron-left'>",next:"<i class='mdi mdi-chevron-right'>"}},drawCallback:function(){$(".dataTables_paginate > .pagination").addClass("pagination-rounded")},
                 // scrollX: true,
-                //     ajax: 'includes/datacontrol?name=student_invoices',
                 //         columns: [
                 //         { data: 'inv_id' },                                    
                 //         { data: 'inv_std_name' },                                    

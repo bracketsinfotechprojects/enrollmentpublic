@@ -40,7 +40,8 @@ LEFT JOIN assessment_submissions asub
     AND aa.student_enrol_id = asub.student_enrol_id
 WHERE aa.assign_status = 'active'
   AND aa.student_enrol_id = " . $student_user_id . "
-ORDER BY aa.created_at DESC";
+ORDER BY aa.created_at DESC
+LIMIT 1";
             
     $result = mysqli_query($connection, $query);
     if($result && mysqli_num_rows($result) > 0){

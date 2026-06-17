@@ -152,6 +152,7 @@ $courses = mysqli_query($connection, "SELECT * FROM courses WHERE course_status 
                     <input type="hidden" name="enquiry_id" value="<?php echo htmlspecialchars($enquiry_id_val); ?>">
                     <input type="hidden" name="rto_name" value="National College Australia">
                     <input type="hidden" name="enrolment_id" value="<?php echo $enrolment_id_edit; ?>">
+                    <input type="hidden" name="student_user_id" value="<?php echo htmlspecialchars($student_user_id ?? ''); ?>">
 
                     <!-- Form Header -->
                     <div class="card mb-3">
@@ -566,17 +567,38 @@ $courses = mysqli_query($connection, "SELECT * FROM courses WHERE course_status 
                             <li>Assure that I have been informed about the training, assessment and support services to be provided and on my rights and obligations as a student at National College Australia.</li>
                         </ul>
                         <div class="row">
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">Full Name of the Candidate <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" name="candidate_full_name" value="<?php echo htmlspecialchars(trim(($student_info['st_name'] ?? '') . ' ' . ($student_info['st_surname'] ?? ''))); ?>" required>
                             </div>
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">Date <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" name="candidate_date" value="<?php echo date('Y-m-d'); ?>" required>
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">Signature of the Candidate <small class="text-muted">(type full name)</small></label>
-                                <input type="text" class="form-control" name="candidate_signature" placeholder="Full name as signature">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Signature of the Candidate <small class="text-muted">(type full name)</small> <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="candidate_signature" placeholder="Full name as signature" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Signature Image <span class="text-danger">*</span></label>
+                                <?php if ($edit_mode && !empty($ef['signature_image'])): ?>
+                                <div class="mb-2">
+                                    <small class="text-muted d-block mb-1">Current signature:</small>
+                                    <img src="uploads/<?php echo htmlspecialchars($ef['signature_image']); ?>"
+                                         alt="Signature"
+                                         class="img-thumbnail"
+                                         style="max-height:80px;"
+                                         onerror="this.style.display='none'">
+                                </div>
+                                <input type="file" class="form-control" id="signature_image" name="signature_image" accept="image/jpeg,image/png,image/gif">
+                                <small class="text-muted">Upload a new image to replace the existing one.</small>
+                                <?php else: ?>
+                                <input type="file" class="form-control" id="signature_image" name="signature_image" accept="image/jpeg,image/png,image/gif" required>
+                                <?php endif; ?>
+                                <div id="sig_img_error" class="text-danger mt-1" style="font-size:0.82rem;display:none;"></div>
+                                <small class="text-muted d-block mt-1">
+                                    Accepted: JPG, PNG, GIF &nbsp;|&nbsp; Max size: 500 KB &nbsp;|&nbsp; Dimensions: 300–800 px wide, 100–300 px tall
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -716,13 +738,51 @@ $(function(){
         $(this).removeClass('is-invalid')[0].setCustomValidity('');
     });
 
+    // Validate signature image dimensions client-side
+    function validateSignatureImage(file) {
+        return new Promise(function(resolve, reject) {
+            var SIG_MAX_BYTES = 500 * 1024;
+            var SIG_MIN_W = 300, SIG_MAX_W = 800;
+            var SIG_MIN_H = 100, SIG_MAX_H = 300;
+            var allowed   = ['image/jpeg', 'image/png', 'image/gif'];
+
+            if (!file) { resolve(); return; }
+
+            if (allowed.indexOf(file.type) === -1) {
+                reject('Signature image must be JPG, PNG, or GIF.'); return;
+            }
+            if (file.size > SIG_MAX_BYTES) {
+                reject('Signature image must be 500 KB or smaller (current: ' + Math.round(file.size/1024) + ' KB).'); return;
+            }
+
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload = function() {
+                URL.revokeObjectURL(url);
+                if (img.width < SIG_MIN_W || img.width > SIG_MAX_W) {
+                    reject('Signature image width must be between ' + SIG_MIN_W + ' and ' + SIG_MAX_W + ' px (current: ' + img.width + ' px).'); return;
+                }
+                if (img.height < SIG_MIN_H || img.height > SIG_MAX_H) {
+                    reject('Signature image height must be between ' + SIG_MIN_H + ' and ' + SIG_MAX_H + ' px (current: ' + img.height + ' px).'); return;
+                }
+                resolve();
+            };
+            img.onerror = function() { URL.revokeObjectURL(url); reject('Could not read the signature image. Please try another file.'); };
+            img.src = url;
+        });
+    }
+
     $('#student_enrolment_form').on('submit', function(e){
         e.preventDefault();
+        var $form   = $(this);
         var $btn    = $('#enrolment_submit_btn');
         var $status = $('#submit_status');
         var $email  = $('input[name="emailAddress"]');
+        var $sigErr = $('#sig_img_error');
 
         $email.removeClass('is-invalid');
+        $sigErr.hide().text('');
+
         var emailVal = $email.val().trim();
         if (!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
             $email.addClass('is-invalid');
@@ -730,66 +790,77 @@ $(function(){
             return;
         }
 
+        var sigFile = $('#signature_image')[0].files[0];
+
         $btn.prop('disabled', true).text('Submitting…');
         $status.text('').removeClass('text-danger text-success');
 
-        var formData = new FormData(this);
-        formData.append('formName', isEditMode ? 'update_enrolment_form_new' : 'save_enrolment_form_new');
+        validateSignatureImage(sigFile).then(function() {
+            var formData = new FormData($form[0]);
+            formData.append('formName', isEditMode ? 'update_enrolment_form_new' : 'save_enrolment_form_new');
 
-        var details = {};
-        $('#student_enrolment_form').find('input, select, textarea').each(function(){
-            var $el = $(this), name = $el.attr('name');
-            if (!name || name === 'photo_upload[]') return;
-            if ($el.attr('type') === 'file') return;
-            if ($el.attr('type') === 'radio'){
-                if ($el.is(':checked')) details[name] = $el.val();
-            } else if ($el.attr('type') === 'checkbox'){
-                if (name.indexOf('[]') !== -1){
-                    var base = name.replace('[]','');
-                    if (!details[base]) details[base] = [];
-                    if ($el.is(':checked')) details[base].push($el.val());
-                } else {
-                    details[name] = $el.is(':checked') ? 1 : 0;
-                }
-            } else {
-                details[name] = $el.val();
-            }
-        });
-        details.courses = $('#courses').val() || [];
-        formData.append('details', JSON.stringify(details));
-
-        var files = $('#photo_upload')[0].files;
-        for (var i = 0; i < files.length; i++) formData.append('image[]', files[i]);
-
-        $.ajax({
-            url: 'includes/datacontrol',
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(res){
-                try {
-                    var data = typeof res === 'string' ? JSON.parse(res) : res;
-                    if (data.success) {
-                        if (isEditMode) {
-                            window.location.href = 'student_queries.php';
-                        } else {
-                            $status.html('<strong class="text-success">Enrolment submitted successfully! Your Student ID: ' + (data.unique_id || '') + '</strong>');
-                            $('#student_enrolment_form').hide();
-                        }
+            var details = {};
+            $form.find('input, select, textarea').each(function(){
+                var $el = $(this), name = $el.attr('name');
+                if (!name || name === 'photo_upload[]' || name === 'signature_image') return;
+                if ($el.attr('type') === 'file') return;
+                if ($el.attr('type') === 'radio'){
+                    if ($el.is(':checked')) details[name] = $el.val();
+                } else if ($el.attr('type') === 'checkbox'){
+                    if (name.indexOf('[]') !== -1){
+                        var base = name.replace('[]','');
+                        if (!details[base]) details[base] = [];
+                        if ($el.is(':checked')) details[base].push($el.val());
                     } else {
-                        $status.text(data.message || 'Error saving enrolment.').addClass('text-danger');
+                        details[name] = $el.is(':checked') ? 1 : 0;
+                    }
+                } else {
+                    details[name] = $el.val();
+                }
+            });
+            details.courses = $('#courses').val() || [];
+            formData.append('details', JSON.stringify(details));
+
+            var files = $('#photo_upload')[0].files;
+            for (var i = 0; i < files.length; i++) formData.append('image[]', files[i]);
+
+            if (sigFile) formData.append('signature_image', sigFile);
+
+            return formData;
+        }).then(function(formData) {
+            $.ajax({
+                url: 'includes/datacontrol',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(res){
+                    try {
+                        var data = typeof res === 'string' ? JSON.parse(res) : res;
+                        if (data.success) {
+                            if (isEditMode) {
+                                window.location.href = 'student_queries.php';
+                            } else {
+                                window.location.href = 'enrolment_status.php';
+                            }
+                        } else {
+                            $status.text(data.message || 'Error saving enrolment.').addClass('text-danger');
+                            $btn.prop('disabled', false).text(isEditMode ? 'Update Enrolment Form' : 'Submit Enrolment Form');
+                        }
+                    } catch(err) {
+                        $status.text(isEditMode ? 'Updated.' : 'Submitted.').addClass('text-success');
                         $btn.prop('disabled', false).text(isEditMode ? 'Update Enrolment Form' : 'Submit Enrolment Form');
                     }
-                } catch(err) {
-                    $status.text(isEditMode ? 'Updated.' : 'Submitted.').addClass('text-success');
+                },
+                error: function(xhr){
+                    $status.text('Error: ' + (xhr.responseText || 'Request failed.')).addClass('text-danger');
                     $btn.prop('disabled', false).text(isEditMode ? 'Update Enrolment Form' : 'Submit Enrolment Form');
                 }
-            },
-            error: function(xhr){
-                $status.text('Error: ' + (xhr.responseText || 'Request failed.')).addClass('text-danger');
-                $btn.prop('disabled', false).text(isEditMode ? 'Update Enrolment Form' : 'Submit Enrolment Form');
-            }
+            });
+        }).catch(function(errMsg) {
+            $sigErr.text(errMsg).show();
+            $('#signature_image')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            $btn.prop('disabled', false).text(isEditMode ? 'Update Enrolment Form' : 'Submit Enrolment Form');
         });
     });
 });
