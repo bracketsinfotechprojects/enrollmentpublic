@@ -19,7 +19,7 @@ $status_reverse = [0 => 'draft', 1 => 'active', 2 => 'inactive'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name          = trim($_POST['form_name']     ?? '');
     $description   = trim($_POST['description']   ?? '');
-    $status_str    = $_POST['status']             ?? 'draft';
+    $status_str    = 'draft';
     $marks         = intval($_POST['total_marks']   ?? 0);
     $passing_marks = intval($_POST['passing_marks'] ?? 0);
     $duration      = intval($_POST['duration']      ?? 0);
@@ -183,16 +183,7 @@ $current_status = $status_reverse[intval($row['status'])] ?? 'draft';
                                     <div class="cf-hint">Leave 0 for no time limit</div>
                                 </div>
 
-                                <div class="cf-field">
-                                    <label>Status</label>
-                                    <div class="cf-select-wrap">
-                                        <select name="status" class="cf-select">
-                                            <option value="draft"    <?php echo $current_status === 'draft'    ? 'selected' : ''; ?>>Draft</option>
-                                            <option value="active"   <?php echo $current_status === 'active'   ? 'selected' : ''; ?>>Active</option>
-                                            <option value="inactive" <?php echo $current_status === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
-                                        </select>
-                                    </div>
-                                </div>
+                                
 
                             </div>
 

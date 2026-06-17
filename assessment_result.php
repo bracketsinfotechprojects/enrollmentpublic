@@ -74,7 +74,11 @@ $query = "SELECT
             COALESCE(se.st_email, '') as st_email,
             (SELECT COUNT(*) FROM assessment_assignments aa
              WHERE aa.assessment_id = s.assessment_id
-               AND aa.student_enrol_id = s.student_enrol_id) as assessment_count
+               AND aa.student_enrol_id = s.student_enrol_id) as assessment_count,
+            (SELECT aa.passing_status FROM assessment_assignments aa
+             WHERE aa.assessment_id = s.assessment_id
+               AND aa.student_enrol_id = s.student_enrol_id
+             ORDER BY aa.id DESC LIMIT 1) as passing_status
           FROM assessment_submissions s
           INNER JOIN assessment a ON s.assessment_id = a.assessment_id
           LEFT JOIN counseling_details cd ON cd.student_user_id = s.student_enrol_id
@@ -402,13 +406,27 @@ function getPercentageClass($perc){
                                                             </button>
                                                            
                                                             <?php elseif(intval($sub['obtained_marks']) < intval($sub['passing_marks']) ): ?>
-                                                            
-                                                             <button type="button"
+                                                            <?php $passStatus = $sub['passing_status'] ?? ''; ?>
+                                                            <?php if($passStatus === 'pass'): ?>
+                                                            <button type="button"
+                                                                class="btn btn-sm btn-success ms-1 disabled"
+                                                                title="Passed">
+                                                                <i class="ti ti-check"></i> Pass
+                                                            </button>
+                                                            <?php elseif($passStatus === 'manual_pass'): ?>
+                                                            <button type="button"
+                                                                class="btn btn-sm btn-secondary ms-1 disabled"
+                                                                title="Manually Passed">
+                                                                <i class="ti ti-award"></i> Manually Passed
+                                                            </button>
+                                                            <?php else: ?>
+                                                            <button type="button"
                                                                 class="btn btn-sm btn-danger ms-1"
                                                                 title="Manual Pass"
                                                                 onclick="handleAction('manual_pass', <?php echo $sub['submission_id']; ?>, <?php echo $sub['assessment_id']; ?>, <?php echo $sub['student_enrol_id']; ?>)">
                                                                 <i class="ti ti-award"></i> Manual Pass
                                                             </button>
+                                                            <?php endif; ?>
                                                             <?php endif; ?>
                                                             
 

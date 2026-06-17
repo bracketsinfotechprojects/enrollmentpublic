@@ -31,17 +31,20 @@ if($submission_id > 0){
             LIMIT 1");
     } else {
         // Admin/Staff can view any submission
-        $sub_check = mysqli_query($connection, "SELECT 
-            s.*, 
+        $sub_check = mysqli_query($connection, "SELECT
+            s.*,
             a.assessment_name,
             a.marks as assessment_total_marks,
             a.duration,
             se.st_given_name,
             se.st_surname,
-            se.st_unique_id
+            se.st_unique_id,
+            efn.given_name as efn_given_name,
+            efn.surname as efn_surname
             FROM assessment_submissions s
             INNER JOIN assessment a ON s.assessment_id = a.assessment_id
             LEFT JOIN student_enrolments se ON s.student_enrol_id = se.st_enrol_id
+            LEFT JOIN enrolment_form_new efn ON efn.student_user_id = s.student_enrol_id
             WHERE s.submission_id = $submission_id
             LIMIT 1");
     }
@@ -52,6 +55,13 @@ if($submission_id > 0){
         header('Location: student_result.php');
         exit;
     }
+
+    $studentName = '';
+    if(!$is_student){
+        $studentName = trim(($submission['efn_given_name'] ?? '') . ' ' . ($submission['efn_surname'] ?? ''));
+        if(!$studentName) $studentName = trim(($submission['st_given_name'] ?? '') . ' ' . ($submission['st_surname'] ?? ''));
+    }
+    
     
     // For admin/staff, verify assessment_id matches if provided
     if(!$is_student && $assessment_id > 0 && intval($submission['assessment_id']) !== $assessment_id){
@@ -64,7 +74,7 @@ if($submission_id > 0){
 
 // Fetch all answers for this assessment and student
 $answers = array();
-$ans_query = "SELECT 
+$ans_query = "SELECT
     q.question_id,
     q.question_text,
     q.question_type,
@@ -74,7 +84,11 @@ $ans_query = "SELECT
     q.option_4,
     q.correct_option,
     q.correct_options_multi,
+    q.correct_option_text,
+    q.`min` as q_min,
+    q.`max` as q_max,
     q.marks as question_marks,
+    a.answer_id,
     a.answer_option,
     a.is_correct,
     a.marks_obtained,
@@ -94,11 +108,21 @@ if($ans_result){
 
 function getQuestionTypeName($type) {
     $types = [
-        1 => 'Single Choice',
-        2 => 'True/False',
-        3 => 'Multiple Choice',
-        4 => 'Text Answer',
-        5 => 'Textarea (Code/Essay)'
+        1  => 'Single Choice',
+        2  => 'True/False',
+        3  => 'Multiple Choice',
+        4  => 'Text Answer',
+        5  => 'Image Based',
+        6  => 'Text',
+        7  => 'Number',
+        8  => 'URL',
+        9  => 'Textarea',
+        10 => 'Dropdown',
+        11 => 'Radio',
+        12 => 'Checkbox',
+        13 => 'Date',
+        14 => 'Time',
+        15 => 'Date & Time',
     ];
     return $types[$type] ?? 'Unknown';
 }
@@ -196,9 +220,8 @@ function getOptionLabel($num) {
                                             <?php if($is_student): ?>
                                             Your Result Details
                                             <?php else: ?>
-                                            Result Details - 
-                                            <?php 
-                                            $studentName = trim($submission['st_given_name'] . ' ' . $submission['st_surname']);
+                                            Result Details -
+                                            <?php
                                             echo htmlspecialchars($studentName ?: 'Unknown Student');
                                             if(!empty($submission['st_unique_id'])) {
                                                 echo ' (' . htmlspecialchars($submission['st_unique_id']) . ')';
@@ -229,7 +252,7 @@ function getOptionLabel($num) {
                                                 </div>
                                             </div>
                                             <div class="col">
-                                                <h5 class="mb-0"><?php echo htmlspecialchars(trim($submission['st_given_name'] . ' ' . $submission['st_surname'])); ?></h5>
+                                                <h5 class="mb-0"><?php echo htmlspecialchars($studentName ?: 'Unknown Student'); ?></h5>
                                                 <p class="text-muted mb-0">
                                                     <?php if(!empty($submission['st_unique_id'])): ?>
                                                     ID: <?php echo htmlspecialchars($submission['st_unique_id']); ?> |
@@ -265,14 +288,17 @@ function getOptionLabel($num) {
                                             Obtained: <?php echo $submission['obtained_marks']; ?> / <?php echo $submission['total_marks']; ?> marks
                                         </h4>
                                         <p class="text-muted mb-0">
-                                            Status: 
-                                            <?php 
+                                            Status:
+                                            <?php
                                             $status = intval($submission['submission_status']);
                                             if($status == 0) echo '<span class="badge bg-info">In Progress</span>';
                                             elseif($status == 1) echo '<span class="badge bg-warning text-dark">Submitted</span>';
                                             elseif($status == 2) echo '<span class="badge bg-success">Graded</span>';
                                             else echo '<span class="badge bg-secondary">Unknown</span>';
                                             ?>
+                                            <?php if(!empty($submission['submitted_at'])): ?>
+                                            &nbsp;| Submitted: <?php echo date('d M Y, h:i A', strtotime($submission['submitted_at'])); ?>
+                                            <?php endif; ?>
                                         </p>
                                     </div>
                                 </div>
@@ -303,11 +329,6 @@ function getOptionLabel($num) {
                                         $cardClass .= 'answer-incorrect';
                                     }
                                     
-                                    // Decode correct options for multiple choice
-                                    $correctOptions = $answer['correct_options_multi'] ? json_decode($answer['correct_options_multi'], true) : null;
-                                    if(!$correctOptions && $answer['correct_option']){
-                                        $correctOptions = [$answer['correct_option']];
-                                    }
                                 ?>
                                 <div class="card <?php echo $cardClass; ?>">
                                     <div class="card-body">
@@ -319,61 +340,237 @@ function getOptionLabel($num) {
                                                 <div class="d-flex justify-content-between align-items-start">
                                                     <div>
                                                         <span class="badge bg-secondary me-2"><?php echo getQuestionTypeName($qt); ?></span>
-                                                        <strong class="fs-6"><?php echo htmlspecialchars($answer['question_text']); ?></strong>
+                                                        <strong class=""><?php echo htmlspecialchars($answer['question_text']); ?></strong>
                                                     </div>
                                                     <span class="badge <?php echo $isCorrect ? 'bg-success' : 'bg-danger'; ?>">
                                                         <?php echo $obtMarks; ?>/<?php echo $qMarks; ?> marks
                                                     </span>
                                                 </div>
                                                 
+                                                <?php if($qt == 5 && !empty($answer['correct_options_multi'])): ?>
+                                                <div class="mt-2 mb-2 text-center">
+                                                    <img src="uploads/question_images/<?php echo htmlspecialchars($answer['correct_options_multi']); ?>"
+                                                         alt="Question Image" class="img-fluid rounded border"
+                                                         style="max-height:200px;">
+                                                </div>
+                                                <?php endif; ?>
                                                 <div class="mt-3 row">
                                                     <div class="col-md-6">
                                                         <small class="text-muted d-block mb-1">Your Answer:</small>
                                                         <?php
                                                         $userAnswer = $answer['answer_option'];
-                                                        if($qt == 1 || $qt == 2){
-                                                            // Single choice or True/False
+                                                        if($qt == 1 || $qt == 5){
                                                             $optNum = intval($userAnswer);
-                                                            echo '<span class="marked-answer">' . getOptionLabel($optNum) . '. ' . htmlspecialchars($answer['option_' . $userAnswer] ?? 'N/A') . '</span>';
+                                                            if($optNum >= 1 && $optNum <= 4 && !empty($answer['option_'.$optNum])){
+                                                                echo '<span class="marked-answer">'.getOptionLabel($optNum).'. '.htmlspecialchars($answer['option_'.$optNum]).'</span>';
+                                                            } elseif($userAnswer){
+                                                                echo '<span class="marked-answer">'.htmlspecialchars($userAnswer).'</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">No answer</span>';
+                                                            }
+                                                        } elseif($qt == 2){
+                                                            if($userAnswer == '1' || strtolower((string)$userAnswer) == 'true'){
+                                                                echo '<span class="marked-answer">True</span>';
+                                                            } elseif($userAnswer == '2' || strtolower((string)$userAnswer) == 'false'){
+                                                                echo '<span class="marked-answer">False</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">No answer</span>';
+                                                            }
                                                         } elseif($qt == 3){
-                                                            // Multiple choice
                                                             $selected = json_decode($userAnswer, true);
                                                             if(is_array($selected) && count($selected) > 0){
                                                                 $opts = [];
                                                                 foreach($selected as $sel){
-                                                                    $opts[] = getOptionLabel(intval($sel)) . '. ' . htmlspecialchars($answer['option_' . $sel] ?? 'N/A');
+                                                                    $opts[] = getOptionLabel(intval($sel)).'. '.htmlspecialchars($answer['option_'.$sel] ?? 'N/A');
                                                                 }
-                                                                echo '<span class="marked-answer">' . implode(', ', $opts) . '</span>';
+                                                                echo '<span class="marked-answer">'.implode(', ', $opts).'</span>';
                                                             } else {
                                                                 echo '<span class="text-muted">No answer</span>';
                                                             }
+                                                        } elseif($qt == 4 || $qt == 6){
+                                                            echo $userAnswer ? '<div class="text-answer">'.nl2br(htmlspecialchars($userAnswer)).'</div>' : '<span class="text-muted">No answer</span>';
+                                                        } elseif($qt == 7){
+                                                            echo $userAnswer !== '' && $userAnswer !== null ? '<span class="marked-answer">'.htmlspecialchars($userAnswer).'</span>' : '<span class="text-muted">No answer</span>';
+                                                        } elseif($qt == 8){
+                                                            if($userAnswer){
+                                                                $safeUrl = htmlspecialchars($userAnswer);
+                                                                echo '<a href="'.$safeUrl.'" target="_blank" rel="noopener" class="marked-answer text-break">'.$safeUrl.'</a>';
+                                                            } else {
+                                                                echo '<span class="text-muted">No answer</span>';
+                                                            }
+                                                        } elseif($qt == 9){
+                                                            echo $userAnswer ? '<div class="text-answer">'.nl2br(htmlspecialchars($userAnswer)).'</div>' : '<span class="text-muted">No answer</span>';
+                                                        } elseif($qt == 10 || $qt == 11){
+                                                            echo $userAnswer ? '<span class="marked-answer">'.htmlspecialchars($userAnswer).'</span>' : '<span class="text-muted">No answer</span>';
+                                                        } elseif($qt == 12){
+                                                            $selArr = json_decode($userAnswer, true);
+                                                            if(is_array($selArr) && count($selArr) > 0){
+                                                                echo '<div class="text-answer">'.implode('<br>', array_map('htmlspecialchars', $selArr)).'</div>';
+                                                            } else {
+                                                                echo '<span class="text-muted">No answer</span>';
+                                                            }
+                                                        } elseif($qt == 13){
+                                                            $ts = $userAnswer ? strtotime($userAnswer) : false;
+                                                            echo $ts ? '<span class="marked-answer">'.date('d M Y', $ts).'</span>' : ($userAnswer ? '<span class="marked-answer">'.htmlspecialchars($userAnswer).'</span>' : '<span class="text-muted">No answer</span>');
+                                                        } elseif($qt == 14){
+                                                            $ts = $userAnswer ? strtotime($userAnswer) : false;
+                                                            echo $ts ? '<span class="marked-answer">'.date('h:i A', $ts).'</span>' : ($userAnswer ? '<span class="marked-answer">'.htmlspecialchars($userAnswer).'</span>' : '<span class="text-muted">No answer</span>');
+                                                        } elseif($qt == 15){
+                                                            $ts = $userAnswer ? strtotime($userAnswer) : false;
+                                                            echo $ts ? '<span class="marked-answer">'.date('d M Y, h:i A', $ts).'</span>' : ($userAnswer ? '<span class="marked-answer">'.htmlspecialchars($userAnswer).'</span>' : '<span class="text-muted">No answer</span>');
                                                         } else {
-                                                            // Text answer
-                                                            echo '<div class="text-answer">' . nl2br(htmlspecialchars($userAnswer)) . '</div>';
+                                                            echo $userAnswer ? '<div class="text-answer">'.nl2br(htmlspecialchars($userAnswer)).'</div>' : '<span class="text-muted">No answer</span>';
                                                         }
                                                         ?>
                                                     </div>
                                                     <div class="col-md-6">
-                                                        <small class="text-muted d-block mb-1">Correct Answer<?php echo $qt == 3 ? 's' : ''; ?>:</small>
+                                                        <small class="text-muted d-block mb-1">
                                                         <?php
-                                                        if($qt == 1 || $qt == 2){
+                                                        if(in_array($qt, [4, 9])) echo 'Model Answer:';
+                                                        elseif(in_array($qt, [3, 12])) echo 'Correct Answers:';
+                                                        else echo 'Correct Answer:';
+                                                        ?>
+                                                        </small>
+                                                        <?php
+                                                        if($qt == 1 || $qt == 5){
                                                             $correctOpt = intval($answer['correct_option']);
-                                                            echo '<span class="correct-answer">' . getOptionLabel($correctOpt) . '. ' . htmlspecialchars($answer['option_' . $correctOpt] ?? 'N/A') . '</span>';
-                                                        } elseif($qt == 3){
-                                                            if(is_array($correctOptions) && count($correctOptions) > 0){
-                                                                $corrOpts = [];
-                                                                foreach($correctOptions as $corr){
-                                                                    $corrOpts[] = getOptionLabel(intval($corr)) . '. ' . htmlspecialchars($answer['option_' . $corr] ?? 'N/A');
-                                                                }
-                                                                echo '<span class="correct-answer">' . implode(', ', $corrOpts) . '</span>';
+                                                            if($correctOpt >= 1 && $correctOpt <= 4 && !empty($answer['option_'.$correctOpt])){
+                                                                echo '<span class="correct-answer">'.getOptionLabel($correctOpt).'. '.htmlspecialchars($answer['option_'.$correctOpt]).'</span>';
+                                                            } elseif($answer['correct_option']){
+                                                                echo '<span class="correct-answer">'.htmlspecialchars($answer['correct_option']).'</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">Not set</span>';
                                                             }
+                                                        } elseif($qt == 2){
+                                                            $co = (string)($answer['correct_option'] ?? '');
+                                                            if($co === '1' || strtolower($co) === 'true') $coDisplay = 'True';
+                                                            elseif($co === '0' || $co === '2' || strtolower($co) === 'false') $coDisplay = 'False';
+                                                            elseif($co !== '') $coDisplay = $co;
+                                                            else $coDisplay = 'Not set';
+                                                            echo '<span class="correct-answer">'.htmlspecialchars($coDisplay).'</span>';
+                                                        } elseif($qt == 3){
+                                                            $corrArr = json_decode($answer['correct_options_multi'] ?? '[]', true);
+                                                            if(is_array($corrArr) && count($corrArr) > 0){
+                                                                $corrItems = [];
+                                                                foreach($corrArr as $corr){
+                                                                    $corrItems[] = getOptionLabel(intval($corr)).'. '.htmlspecialchars($answer['option_'.$corr] ?? 'N/A');
+                                                                }
+                                                                echo '<span class="correct-answer">'.implode(', ', $corrItems).'</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">Not set</span>';
+                                                            }
+                                                        } elseif($qt == 4){
+                                                            $ct = $answer['correct_options_multi'] ?: ($answer['correct_option'] ?? '');
+                                                            echo $ct ? '<div class="text-answer">'.nl2br(htmlspecialchars($ct)).'</div>' : '<span class="text-muted">Manual grading required</span>';
+                                                        } elseif($qt == 6){
+                                                            $ct = $answer['correct_option_text'] ?? '';
+                                                            echo $ct ? '<div class="text-answer">'.nl2br(htmlspecialchars($ct)).'</div>' : '<span class="text-muted">—</span>';
+                                                        } elseif($qt == 7){
+                                                            $expNum = $answer['correct_option_text'] ?? '';
+                                                            $minV   = $answer['q_min'] ?? '';
+                                                            $maxV   = $answer['q_max'] ?? '';
+                                                            if($expNum !== '') echo '<span class="correct-answer">'.htmlspecialchars($expNum).'</span>';
+                                                            if($minV !== '' || $maxV !== '') echo '<small class="text-muted d-block mt-1">Range: '.htmlspecialchars($minV !== '' ? $minV : '—').' – '.htmlspecialchars($maxV !== '' ? $maxV : '—').'</small>';
+                                                            if($expNum === '' && $minV === '' && $maxV === '') echo '<span class="text-muted">Not set</span>';
+                                                        } elseif($qt == 8){
+                                                            $expUrl = $answer['correct_option_text'] ?? '';
+                                                            if($expUrl){
+                                                                $safeUrl = htmlspecialchars($expUrl);
+                                                                echo '<a href="'.$safeUrl.'" target="_blank" rel="noopener" class="correct-answer text-break">'.$safeUrl.'</a>';
+                                                            } else {
+                                                                echo '<span class="text-muted">Not set</span>';
+                                                            }
+                                                        } elseif($qt == 9){
+                                                            $ct = $answer['correct_option_text'] ?? '';
+                                                            echo $ct ? '<div class="text-answer">'.nl2br(htmlspecialchars($ct)).'</div>' : '<span class="text-muted">Manual grading required</span>';
+                                                        } elseif($qt == 10){
+                                                            $allOpts = json_decode($answer['option_1'] ?? '[]', true) ?: [];
+                                                            $corrIdx = json_decode($answer['correct_options_multi'] ?? '[]', true) ?: [];
+                                                            $displayVals = [];
+                                                            foreach($corrIdx as $cv){
+                                                                $idx = intval($cv) - 1; // stored as 1-based index
+                                                                if(isset($allOpts[$idx]) && $allOpts[$idx] !== ''){
+                                                                    $displayVals[] = $allOpts[$idx];
+                                                                } elseif($cv !== ''){
+                                                                    $displayVals[] = $cv;
+                                                                }
+                                                            }
+                                                            echo count($displayVals) > 0
+                                                                ? '<span class="correct-answer">'.htmlspecialchars(implode(', ', $displayVals)).'</span>'
+                                                                : '<span class="text-muted">Not set</span>';
+                                                        } elseif($qt == 11){
+                                                            $allOpts = json_decode($answer['option_1'] ?? '[]', true) ?: [];
+                                                            $co = $answer['correct_option'] ?? '';
+                                                            $idx = intval($co) - 1; // stored as 1-based index
+                                                            if(isset($allOpts[$idx]) && $allOpts[$idx] !== ''){
+                                                                echo '<span class="correct-answer">'.htmlspecialchars($allOpts[$idx]).'</span>';
+                                                            } elseif($co !== ''){
+                                                                echo '<span class="correct-answer">'.htmlspecialchars($co).'</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">Not set</span>';
+                                                            }
+                                                        } elseif($qt == 12){
+                                                            $allOpts = json_decode($answer['option_1'] ?? '[]', true) ?: [];
+                                                            $corrIdx = json_decode($answer['correct_options_multi'] ?? '[]', true) ?: [];
+                                                            $displayVals = [];
+                                                            foreach($corrIdx as $cv){
+                                                                $idx = intval($cv) - 1; // stored as 1-based index
+                                                                if(isset($allOpts[$idx]) && $allOpts[$idx] !== ''){
+                                                                    $displayVals[] = $allOpts[$idx];
+                                                                } elseif($cv !== ''){
+                                                                    $displayVals[] = $cv;
+                                                                }
+                                                            }
+                                                            echo count($displayVals) > 0
+                                                                ? '<div class="correct-answer">'.implode('<br>', array_map('htmlspecialchars', $displayVals)).'</div>'
+                                                                : '<span class="text-muted">Not set</span>';
+                                                        } elseif($qt == 13){
+                                                            $ct = $answer['correct_option_text'] ?? '';
+                                                            $ts = $ct ? strtotime($ct) : false;
+                                                            echo $ts ? '<span class="correct-answer">'.date('d M Y', $ts).'</span>' : ($ct ? '<span class="correct-answer">'.htmlspecialchars($ct).'</span>' : '<span class="text-muted">Not set</span>');
+                                                        } elseif($qt == 14){
+                                                            $ct = $answer['correct_option_text'] ?? '';
+                                                            $ts = $ct ? strtotime($ct) : false;
+                                                            echo $ts ? '<span class="correct-answer">'.date('h:i A', $ts).'</span>' : ($ct ? '<span class="correct-answer">'.htmlspecialchars($ct).'</span>' : '<span class="text-muted">Not set</span>');
+                                                        } elseif($qt == 15){
+                                                            $ct = $answer['correct_option_text'] ?? '';
+                                                            $ts = $ct ? strtotime($ct) : false;
+                                                            echo $ts ? '<span class="correct-answer">'.date('d M Y, h:i A', $ts).'</span>' : ($ct ? '<span class="correct-answer">'.htmlspecialchars($ct).'</span>' : '<span class="text-muted">Not set</span>');
                                                         } else {
-                                                            $correctText = $answer['correct_option'] ?: 'As per evaluator';
-                                                            echo '<div class="text-answer">' . nl2br(htmlspecialchars($correctText)) . '</div>';
+                                                            $co = $answer['correct_option'] ?? '';
+                                                            echo $co ? '<div class="text-answer">'.nl2br(htmlspecialchars($co)).'</div>' : '<span class="text-muted">Not set</span>';
                                                         }
                                                         ?>
                                                     </div>
                                                 </div>
+                                                <?php if(in_array($qt, [4, 6, 9]) && !$is_student): ?>
+                                                <div class="mt-3 pt-3 border-top d-flex align-items-end gap-3 flex-wrap">
+                                                    <div>
+                                                        <label class="form-label mb-1 fw-semibold small">Mark as Correct</label>
+                                                        <div class="form-check form-switch mt-1">
+                                                            <input class="form-check-input" type="checkbox"
+                                                                id="correct_<?php echo $answer['question_id']; ?>"
+                                                                <?php echo $isCorrect ? 'checked' : ''; ?>
+                                                                onchange="toggleTextGrade(this,<?php echo $answer['question_id']; ?>,<?php echo $qMarks; ?>)">
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label class="form-label mb-1 fw-semibold small">Marks <span class="text-muted">(max <?php echo $qMarks; ?>)</span></label>
+                                                        <input type="number" class="form-control form-control-sm"
+                                                            id="marks_<?php echo $answer['question_id']; ?>"
+                                                            min="0" max="<?php echo $qMarks; ?>"
+                                                            value="<?php echo $obtMarks; ?>"
+                                                            style="width:90px">
+                                                    </div>
+                                                    <div>
+                                                        <button class="btn btn-sm btn-primary"
+                                                            onclick="saveTextGrade(<?php echo intval($answer['answer_id']); ?>,<?php echo $submission_id; ?>,<?php echo $answer['question_id']; ?>,<?php echo $qMarks; ?>)">
+                                                            Save Grade
+                                                        </button>
+                                                        <span id="grade_status_<?php echo $answer['question_id']; ?>" class="ms-2 small"></span>
+                                                    </div>
+                                                </div>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
                                     </div>
@@ -389,5 +586,48 @@ function getOptionLabel($num) {
 
         <div class="rightbar-overlay"></div>
         <?php include('includes/footer_includes.php'); ?>
+        <script>
+        function toggleTextGrade(cb, qid, maxMarks){
+            var marksInput = document.getElementById('marks_'+qid);
+            if(cb.checked){
+                marksInput.value = maxMarks;
+            } else {
+                marksInput.value = 0;
+            }
+        }
+        function saveTextGrade(answerId, submissionId, questionId, maxMarks){
+            var cb = document.getElementById('correct_'+questionId);
+            var marksInput = document.getElementById('marks_'+questionId);
+            var statusEl = document.getElementById('grade_status_'+questionId);
+            var isCorrect = cb.checked ? 1 : 0;
+            var rawVal = parseInt(marksInput.value) || 0;
+            var marks = Math.min(Math.max(rawVal, 0), maxMarks);
+            marksInput.value = marks;
+            statusEl.textContent = 'Saving...';
+            statusEl.className = 'ms-2 small text-muted';
+            var fd = new FormData();
+            fd.append('formName', 'save_text_grade');
+            fd.append('answer_id', answerId);
+            fd.append('submission_id', submissionId);
+            fd.append('question_id', questionId);
+            fd.append('is_correct', isCorrect);
+            fd.append('marks_obtained', marks);
+            fetch('includes/datacontrol.php', { method:'POST', body: fd })
+                .then(function(r){ return r.json(); })
+                .then(function(data){
+                    if(data.success){
+                        statusEl.textContent = 'Saved';
+                        statusEl.className = 'ms-2 small text-success';
+                    } else {
+                        statusEl.textContent = data.message || 'Error';
+                        statusEl.className = 'ms-2 small text-danger';
+                    }
+                })
+                .catch(function(){
+                    statusEl.textContent = 'Request failed';
+                    statusEl.className = 'ms-2 small text-danger';
+                });
+        }
+        </script>
     </body>
 </html>

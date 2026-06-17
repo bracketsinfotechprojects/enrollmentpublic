@@ -2293,8 +2293,10 @@ if (@$_POST['formName'] == 'student_enrols_online') {
     $lastId = mysqli_insert_id($connection);
     $courseId = !empty($courses) ? (int)$courses[0] : 0;
     $courseID = $courseId ? mysqli_fetch_array(mysqli_query($connection, "SELECT * FROM courses WHERE course_id=$courseId")) : null;
-    $dateYear = date('Y');
-    $uniqueId = $courseID ? sprintf($dateYear . $courseID['course_name'] . '%04d', $lastId) : ($dateYear . 'ENR' . sprintf('%04d', $lastId));
+    $namePrefix  = ucfirst(strtolower(substr(preg_replace('/[^a-zA-Z]/', '', $given_name), 0, 4)));
+    $dobTs       = !empty($dob) ? strtotime($dob) : false;
+    $dobSuffix   = $dobTs ? date('dmy', $dobTs) : '';
+    $uniqueId    = $namePrefix . $dobSuffix;
     $coursesDisplay = '';
     if (!empty($courses) && $courseID) {
         $names = array();
@@ -2557,13 +2559,11 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
     }
     $last_id = mysqli_insert_id($connection);
 
-    // Generate unique student ID
-    $course_id = !empty($courses_arr) ? (int)$courses_arr[0] : 0;
-    $course_row = $course_id ? mysqli_fetch_assoc(mysqli_query($connection, "SELECT course_sname FROM courses WHERE course_id=$course_id")) : null;
-    $year = date('Y');
-    $unique_id = $course_row
-        ? $year . strtoupper(preg_replace('/\s+/', '', $course_row['course_sname'])) . sprintf('%04d', $last_id)
-        : $year . 'ENR' . sprintf('%04d', $last_id);
+    // Generate unique student ID: first 4 letters of name + DOB as DDMMYY (e.g. Moni110799)
+    $namePrefix = ucfirst(strtolower(substr(preg_replace('/[^a-zA-Z]/', '', $given_name), 0, 4)));
+    $dobTs      = !empty($dob) ? strtotime($dob) : false;
+    $dobSuffix  = $dobTs ? date('dmy', $dobTs) : '';
+    $unique_id  = $namePrefix . $dobSuffix;
 
     mysqli_query($connection, "UPDATE enrolment_form_new SET office_student_id='" . mysqli_real_escape_string($connection, $unique_id) . "' WHERE id=$last_id");
 
@@ -6967,6 +6967,48 @@ if(@$_POST['formName']=='create_question'){
     $correct_option = '';
     $correct_options_multi = null;
     
+    // ── Generic optional question image (all types) ──
+    $question_image_val = null;
+    $qi_upload_dir = __DIR__ . '/../uploads/question_images/';
+    if(!is_dir($qi_upload_dir)) { @mkdir($qi_upload_dir, 0777, true); }
+    if(isset($_FILES['question_image_file']) && $_FILES['question_image_file']['error'] === UPLOAD_ERR_OK) {
+        $qi_info = @getimagesize($_FILES['question_image_file']['tmp_name']);
+        $qi_allowed = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+        if($qi_info && in_array($qi_info[2], $qi_allowed) && $_FILES['question_image_file']['size'] <= 2*1024*1024) {
+            $qi_em  = [IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png',IMAGETYPE_GIF=>'gif',IMAGETYPE_WEBP=>'webp'];
+            $qi_ext = $qi_em[$qi_info[2]] ?? 'jpg';
+            $qi_fname = 'qimg_'.time().'_'.mt_rand(1000,9999).'.'.$qi_ext;
+            if(move_uploaded_file($_FILES['question_image_file']['tmp_name'], $qi_upload_dir.$qi_fname))
+                $question_image_val = mysqli_real_escape_string($connection, $qi_fname);
+        }
+    } elseif(isset($_POST['existing_question_image']) && $_POST['existing_question_image'] !== '') {
+        $question_image_val = mysqli_real_escape_string($connection, $_POST['existing_question_image']);
+    }
+
+    // Ensure correct_option_text column exists
+    $cot_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'correct_option_text'");
+    if($cot_chk && mysqli_num_rows($cot_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `correct_option_text` TEXT DEFAULT NULL");
+    }
+    // Ensure placeholder column exists
+    $ph_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'placeholder'");
+    if($ph_chk && mysqli_num_rows($ph_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `placeholder` VARCHAR(255) DEFAULT NULL");
+    }
+    // Ensure min/max columns exist
+    $min_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'min'");
+    if($min_chk && mysqli_num_rows($min_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `min` VARCHAR(50) DEFAULT NULL");
+    }
+    $max_chk = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'max'");
+    if($max_chk && mysqli_num_rows($max_chk) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `max` VARCHAR(50) DEFAULT NULL");
+    }
+    $correct_option_text = null;
+    $placeholder = null;
+    $num_min = null;
+    $num_max = null;
+
     if($question_type == 1) {
         $correct_option = intval($_POST['correct_option']);
         if(empty($option_1) || empty($option_2) || empty($option_3) || empty($option_4) || $correct_option < 1 || $correct_option > 4){
@@ -7050,10 +7092,53 @@ if(@$_POST['formName']=='create_question'){
             echo 'Please fill all 4 option fields and select the correct answer.';
             exit;
         }
+    } elseif($question_type == 6) {
+        // Text – expected answer saved to correct_option_text (optional)
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 8) {
+        // URL – expected URL is mandatory
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+        if(empty($correct_option_text)) {
+            echo 'Expected URL is required';
+            exit;
+        }
+    } elseif($question_type == 7) {
+        // Number – min, max, placeholder and expected answer saved to dedicated columns
+        $num_min = mysqli_real_escape_string($connection, $_POST['min'] ?? '');
+        $num_max = mysqli_real_escape_string($connection, $_POST['max'] ?? '');
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 9) {
+        // Textarea – placeholder and model answer saved to dedicated columns
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 10) {
+        // Dropdown – all options in option_1 (JSON), correct option in correct_options_multi
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 11) {
+        // Radio – all options saved in option_1 (JSON), correct option saved in correct_option
+        $correct_option = mysqli_real_escape_string($connection, $_POST['correct_option'] ?? '');
+    } elseif($question_type == 12) {
+        // Checkbox – all options saved in option_1 (JSON), correct answers in correct_options_multi (JSON)
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 13) {
+        // Date – correct date saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 14) {
+        // Time – correct time saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 15) {
+        // DateTime – correct datetime saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
     }
 
-    $query = "INSERT INTO assessment_questions (assessment_id, question_type, question_text, option_1, option_2, option_3, option_4, correct_option, correct_options_multi, marks, status)
-              VALUES ($assessment_id, $question_type, '$question_text', " . ($option_1 ? "'$option_1'" : "NULL") . ", " . ($option_2 ? "'$option_2'" : "NULL") . ", " . ($option_3 ? "'$option_3'" : "NULL") . ", " . ($option_4 ? "'$option_4'" : "NULL") . ", " . ($correct_option !== '' ? "'$correct_option'" : "NULL") . ", " . ($correct_options_multi ? "'$correct_options_multi'" : "NULL") . ", $question_marks, 0)";
+    $qi_sql  = $question_image_val ? "'$question_image_val'" : "NULL";
+    $cot_sql = $correct_option_text ? "'$correct_option_text'" : "NULL";
+    $ph_sql  = $placeholder ? "'$placeholder'" : "NULL";
+    $min_sql = $num_min !== null && $num_min !== '' ? "'$num_min'" : "NULL";
+    $max_sql = $num_max !== null && $num_max !== '' ? "'$num_max'" : "NULL";
+    $query = "INSERT INTO assessment_questions (assessment_id, question_type, question_text, option_1, option_2, option_3, option_4, correct_option, correct_options_multi, question_image, correct_option_text, placeholder, `min`, `max`, marks, status)
+              VALUES ($assessment_id, $question_type, '$question_text', " . ($option_1 ? "'$option_1'" : "NULL") . ", " . ($option_2 ? "'$option_2'" : "NULL") . ", " . ($option_3 ? "'$option_3'" : "NULL") . ", " . ($option_4 ? "'$option_4'" : "NULL") . ", " . ($correct_option !== '' ? "'$correct_option'" : "NULL") . ", " . ($correct_options_multi ? "'$correct_options_multi'" : "NULL") . ", $qi_sql, $cot_sql, $ph_sql, $min_sql, $max_sql, $question_marks, 0)";
 
     $result = mysqli_query($connection, $query);
 
@@ -7125,7 +7210,52 @@ if(@$_POST['formName']=='update_question'){
     $option_4 = isset($_POST['option_4']) ? mysqli_real_escape_string($connection, $_POST['option_4']) : null;
     $correct_option = '';
     $correct_options_multi = null;
-    
+
+    // ── Generic optional question image (all types) ──
+    $question_image_val = null; // null = no change to column
+    $qi_upload_dir = __DIR__ . '/../uploads/question_images/';
+    if(!is_dir($qi_upload_dir)) { @mkdir($qi_upload_dir, 0777, true); }
+    if(isset($_FILES['question_image_file']) && $_FILES['question_image_file']['error'] === UPLOAD_ERR_OK) {
+        $qi_info = @getimagesize($_FILES['question_image_file']['tmp_name']);
+        $qi_allowed = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+        if($qi_info && in_array($qi_info[2], $qi_allowed) && $_FILES['question_image_file']['size'] <= 2*1024*1024) {
+            $qi_em  = [IMAGETYPE_JPEG=>'jpg',IMAGETYPE_PNG=>'png',IMAGETYPE_GIF=>'gif',IMAGETYPE_WEBP=>'webp'];
+            $qi_ext = $qi_em[$qi_info[2]] ?? 'jpg';
+            $qi_fname = 'qimg_'.time().'_'.mt_rand(1000,9999).'.'.$qi_ext;
+            if(move_uploaded_file($_FILES['question_image_file']['tmp_name'], $qi_upload_dir.$qi_fname))
+                $question_image_val = mysqli_real_escape_string($connection, $qi_fname);
+        }
+    } elseif(isset($_POST['existing_question_image'])) {
+        // empty string = user removed image; non-empty = keep existing
+        $question_image_val = $_POST['existing_question_image'] !== ''
+            ? mysqli_real_escape_string($connection, $_POST['existing_question_image'])
+            : ''; // '' signals clear
+    }
+
+    // Ensure correct_option_text column exists
+    $cot_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'correct_option_text'");
+    if($cot_chk2 && mysqli_num_rows($cot_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `correct_option_text` TEXT DEFAULT NULL");
+    }
+    // Ensure placeholder column exists
+    $ph_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'placeholder'");
+    if($ph_chk2 && mysqli_num_rows($ph_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `placeholder` VARCHAR(255) DEFAULT NULL");
+    }
+    // Ensure min/max columns exist
+    $min_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'min'");
+    if($min_chk2 && mysqli_num_rows($min_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `min` VARCHAR(50) DEFAULT NULL");
+    }
+    $max_chk2 = mysqli_query($connection, "SHOW COLUMNS FROM `assessment_questions` LIKE 'max'");
+    if($max_chk2 && mysqli_num_rows($max_chk2) === 0) {
+        mysqli_query($connection, "ALTER TABLE `assessment_questions` ADD COLUMN `max` VARCHAR(50) DEFAULT NULL");
+    }
+    $correct_option_text = null;
+    $placeholder = null;
+    $num_min = null;
+    $num_max = null;
+
     if($question_type == 1) {
         $correct_option = intval($_POST['correct_option']);
     } elseif($question_type == 2) {
@@ -7159,6 +7289,44 @@ if(@$_POST['formName']=='update_question'){
             echo 'An image is required for image-based questions.'; exit;
         }
         $correct_option = intval($_POST['correct_option'] ?? 0);
+    } elseif($question_type == 6) {
+        // Text – expected answer saved to correct_option_text (optional)
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 8) {
+        // URL – expected URL is mandatory
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+        if(empty($correct_option_text)) {
+            echo 'Expected URL is required';
+            exit;
+        }
+    } elseif($question_type == 7) {
+        // Number – min, max, placeholder and expected answer saved to dedicated columns
+        $num_min = mysqli_real_escape_string($connection, $_POST['min'] ?? '');
+        $num_max = mysqli_real_escape_string($connection, $_POST['max'] ?? '');
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 9) {
+        // Textarea – placeholder and model answer saved to dedicated columns
+        $placeholder = mysqli_real_escape_string($connection, $_POST['placeholder'] ?? '');
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 10) {
+        // Dropdown – all options in option_1 (JSON), correct option in correct_options_multi
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 11) {
+        // Radio – all options saved in option_1 (JSON), correct option saved in correct_option
+        $correct_option = mysqli_real_escape_string($connection, $_POST['correct_option'] ?? '');
+    } elseif($question_type == 12) {
+        // Checkbox – all options saved in option_1 (JSON), correct answers in correct_options_multi (JSON)
+        $correct_options_multi = isset($_POST['correct_options_multi']) ? mysqli_real_escape_string($connection, $_POST['correct_options_multi']) : '[]';
+    } elseif($question_type == 13) {
+        // Date – correct date saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 14) {
+        // Time – correct time saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
+    } elseif($question_type == 15) {
+        // DateTime – correct datetime saved to correct_option_text
+        $correct_option_text = mysqli_real_escape_string($connection, $_POST['correct_option_text'] ?? '');
     }
 
     $o1 = $option_1 ? "'$option_1'" : "NULL";
@@ -7167,17 +7335,31 @@ if(@$_POST['formName']=='update_question'){
     $o4 = $option_4 ? "'$option_4'" : "NULL";
     $co = $correct_option ? "'$correct_option'" : "NULL";
     $com = $correct_options_multi ? "'$correct_options_multi'" : "NULL";
-    
-    $query = "UPDATE assessment_questions SET 
+    $cot_sql2  = $correct_option_text ? "'$correct_option_text'" : "NULL";
+    $ph_sql2   = $placeholder ? "'$placeholder'" : "NULL";
+    $min_sql2  = $num_min !== null && $num_min !== '' ? "'$num_min'" : "NULL";
+    $max_sql2  = $num_max !== null && $num_max !== '' ? "'$num_max'" : "NULL";
+    // question_image: null = don't touch, '' = set NULL, 'filename' = set value
+    $qi_set = '';
+    if($question_image_val !== null) {
+        $qi_set = ', question_image=' . ($question_image_val !== '' ? "'$question_image_val'" : 'NULL');
+    }
+
+    $query = "UPDATE assessment_questions SET
               question_type = $question_type,
-              question_text = '$question_text', 
-              option_1 = $o1, 
-              option_2 = $o2, 
-              option_3 = $o3, 
-              option_4 = $o4, 
-              correct_option = $co, 
+              question_text = '$question_text',
+              option_1 = $o1,
+              option_2 = $o2,
+              option_3 = $o3,
+              option_4 = $o4,
+              correct_option = $co,
               correct_options_multi = $com,
-              marks = $question_marks 
+              correct_option_text = $cot_sql2,
+              placeholder = $ph_sql2,
+              `min` = $min_sql2,
+              `max` = $max_sql2,
+              marks = $question_marks
+              $qi_set
               WHERE question_id = $question_id AND assessment_id = $assessment_id";
     
     $result = mysqli_query($connection, $query);
@@ -7187,6 +7369,53 @@ if(@$_POST['formName']=='update_question'){
     } else {
         echo mysqli_error($connection);
     }
+    exit;
+}
+
+// Save Text Grade (manual grading for question type 4)
+if(@$_POST['formName']=='save_text_grade'){
+    ob_clean();
+    header('Content-Type: application/json');
+    $answer_id      = intval($_POST['answer_id']);
+    $submission_id  = intval($_POST['submission_id']);
+    $is_correct     = intval($_POST['is_correct']) ? 1 : 0;
+    $marks_obtained = floatval($_POST['marks_obtained']);
+
+    // Update is_correct and marks_obtained for this answer row
+    $upd = mysqli_query($connection,
+        "UPDATE assessment_answers
+         SET is_correct = $is_correct, marks_obtained = $marks_obtained
+         WHERE answer_id = $answer_id");
+
+    if(!$upd){
+        echo json_encode(['success'=>false,'message'=>mysqli_error($connection)]);
+        exit;
+    }
+
+    // Get assessment_id and student_enrol_id from this answer to recalculate totals
+    $ansRow = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT assessment_id, student_enrol_id FROM assessment_answers WHERE answer_id = $answer_id LIMIT 1"));
+    $aid  = intval($ansRow['assessment_id'] ?? 0);
+    $seid = intval($ansRow['student_enrol_id'] ?? 0);
+
+    // Sum all marks_obtained for this student's answers in this assessment
+    $totRow = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT SUM(marks_obtained) AS total FROM assessment_answers
+         WHERE assessment_id = $aid AND student_enrol_id = $seid"));
+    $obtained = floatval($totRow['total'] ?? 0);
+
+    // Get total_marks from the submission to compute percentage
+    $subRow = mysqli_fetch_assoc(mysqli_query($connection,
+        "SELECT total_marks FROM assessment_submissions WHERE submission_id = $submission_id LIMIT 1"));
+    $total = floatval($subRow['total_marks'] ?? 0);
+    $percentage = ($total > 0) ? round(($obtained / $total) * 100, 2) : 0;
+
+    mysqli_query($connection,
+        "UPDATE assessment_submissions
+         SET obtained_marks = $obtained, percentage = $percentage
+         WHERE submission_id = $submission_id");
+
+    echo json_encode(['success'=>true]);
     exit;
 }
 
@@ -7210,11 +7439,30 @@ if(@$_GET['name']=='questionList'){
             'option_3' => htmlspecialchars($row['option_3']),
             'option_4' => htmlspecialchars($row['option_4']),
             'correct_option' => $row['correct_option'],
+            'correct_options_multi' => $row['correct_options_multi'],
+            'correct_option_text' => $row['correct_option_text'],
+            'placeholder' => $row['placeholder'],
+            'min' => $row['min'],
+            'max' => $row['max'],
             'marks' => $row['marks']
         );
     }
     
     echo json_encode(array('questions' => $questions));
+    exit;
+}
+
+// Fetch correct_option for a single question (used for True/False edit pre-fill)
+if(@$_GET['name']=='getQuestionAnswer'){
+    ob_clean();
+    header('Content-Type: application/json');
+    $question_id = intval($_GET['question_id']);
+    $result = mysqli_query($connection, "SELECT correct_option FROM assessment_questions WHERE question_id = $question_id LIMIT 1");
+    if($result && $row = mysqli_fetch_assoc($result)){
+        echo json_encode(array('correct_option' => $row['correct_option']));
+    } else {
+        echo json_encode(array('correct_option' => ''));
+    }
     exit;
 }
 
@@ -7450,20 +7698,29 @@ if(@$_POST['formName']=='submit_assessment'){
         
         if($student_answer_text){
             $attempted_questions++;
-            if($question_type == 1){
-                // Single Choice
+            if($question_type == 1 || $question_type == 5){
+                // Single Choice / Image Based – answer is option number
                 if($student_answer_text == $question['correct_option']){
                     $is_correct = 1;
                     $marks_obtained = $question_marks;
                 }
             } elseif($question_type == 2){
-                // True/False
-                if($student_answer_text == $question['correct_option']){
+                // True/False – student sends "1" (True) or "2" (False);
+                // correct_option stored as "True"/"False" or "1"/"0" — normalise both sides
+                $sa_tf = strtolower(trim($student_answer_text));
+                if($sa_tf == '1') $sa_tf = 'true';
+                elseif($sa_tf == '2') $sa_tf = 'false';
+
+                $co_tf = strtolower(trim($question['correct_option'] ?? ''));
+                if($co_tf == '1') $co_tf = 'true';
+                elseif($co_tf == '0' || $co_tf == '2') $co_tf = 'false';
+
+                if($sa_tf !== '' && $sa_tf == $co_tf){
                     $is_correct = 1;
                     $marks_obtained = $question_marks;
                 }
             } elseif($question_type == 3){
-                // Multiple Choice - check all correct options
+                // Multiple Choice – both sides are JSON arrays of 1-based option indices
                 $correct_multi = json_decode($question['correct_options_multi'] ?? '[]', true);
                 $student_multi = json_decode($student_answer_text, true);
                 if(is_array($correct_multi) && is_array($student_multi)){
@@ -7475,10 +7732,119 @@ if(@$_POST['formName']=='submit_assessment'){
                     }
                 }
             } elseif($question_type == 4){
-                // Text Answer - case insensitive check
-                if(strtolower(trim($student_answer_text)) == strtolower(trim($question['correct_option']))){
+                // Text Answer – case-insensitive match against correct_options_multi (expected answer)
+                $expected4 = trim($question['correct_options_multi'] ?? $question['correct_option'] ?? '');
+                if($expected4 !== '' && strtolower(trim($student_answer_text)) == strtolower($expected4)){
                     $is_correct = 1;
                     $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 6){
+                // Text – case-insensitive match against correct_option_text
+                $expected6 = trim($question['correct_option_text'] ?? '');
+                if($expected6 !== '' && strtolower(trim($student_answer_text)) == strtolower($expected6)){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 7){
+                // Number – exact match AND/OR within min–max range
+                $expected7 = trim($question['correct_option_text'] ?? '');
+                $min7 = trim($question['min'] ?? '');
+                $max7 = trim($question['max'] ?? '');
+                if($expected7 !== '' || $min7 !== '' || $max7 !== ''){
+                    $stu_num = floatval($student_answer_text);
+                    $ok7 = true;
+                    if($expected7 !== '' && is_numeric($expected7)){
+                        if(abs($stu_num - floatval($expected7)) > 0.000001) $ok7 = false;
+                    }
+                    if($min7 !== '' && is_numeric($min7) && $stu_num < floatval($min7)) $ok7 = false;
+                    if($max7 !== '' && is_numeric($max7) && $stu_num > floatval($max7)) $ok7 = false;
+                    if($ok7){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
+                }
+            } elseif($question_type == 8){
+                // URL – case-insensitive, strip trailing slash
+                $expected8 = rtrim(strtolower(trim($question['correct_option_text'] ?? '')), '/');
+                $student8  = rtrim(strtolower(trim($student_answer_text)), '/');
+                if($expected8 !== '' && $student8 == $expected8){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 9){
+                // Textarea (essay/code) – requires manual grading, skip auto-grade
+            } elseif($question_type == 10){
+                // Dropdown – student answer is option TEXT; correct_options_multi has 1-based indices
+                $all_opts10  = json_decode($question['option_1'] ?? '[]', true) ?: [];
+                $corr_idx10  = json_decode($question['correct_options_multi'] ?? '[]', true) ?: [];
+                $corr_texts10 = [];
+                foreach($corr_idx10 as $ci){
+                    $idx = intval($ci) - 1;
+                    if(isset($all_opts10[$idx])) $corr_texts10[] = strtolower(trim($all_opts10[$idx]));
+                }
+                if(count($corr_texts10) && in_array(strtolower(trim($student_answer_text)), $corr_texts10)){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 11){
+                // Radio – student answer is option TEXT; correct_option has 1-based index
+                $all_opts11 = json_decode($question['option_1'] ?? '[]', true) ?: [];
+                $corr_idx11 = intval($question['correct_option'] ?? 0) - 1;
+                $corr_text11 = isset($all_opts11[$corr_idx11]) ? strtolower(trim($all_opts11[$corr_idx11])) : '';
+                if($corr_text11 !== '' && strtolower(trim($student_answer_text)) == $corr_text11){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 12){
+                // Checkbox – student answer is JSON array of option TEXTS;
+                // correct_options_multi has 1-based indices → resolve to texts, then compare
+                $all_opts12  = json_decode($question['option_1'] ?? '[]', true) ?: [];
+                $corr_idx12  = json_decode($question['correct_options_multi'] ?? '[]', true) ?: [];
+                $corr_texts12 = [];
+                foreach($corr_idx12 as $ci){
+                    $idx = intval($ci) - 1;
+                    if(isset($all_opts12[$idx])) $corr_texts12[] = strtolower(trim($all_opts12[$idx]));
+                }
+                sort($corr_texts12);
+                $stu_selected12 = json_decode($student_answer_text, true) ?: [];
+                $stu_texts12 = array_map(fn($t) => strtolower(trim($t)), $stu_selected12);
+                sort($stu_texts12);
+                if(count($corr_texts12) && $corr_texts12 == $stu_texts12){
+                    $is_correct = 1;
+                    $marks_obtained = $question_marks;
+                }
+            } elseif($question_type == 13){
+                // Date – compare as Y-m-d
+                $expected13 = trim($question['correct_option_text'] ?? '');
+                if($expected13 !== ''){
+                    $exp_ts13 = strtotime($expected13);
+                    $stu_ts13 = strtotime($student_answer_text);
+                    if($exp_ts13 && $stu_ts13 && date('Y-m-d', $exp_ts13) == date('Y-m-d', $stu_ts13)){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
+                }
+            } elseif($question_type == 14){
+                // Time – compare as H:i
+                $expected14 = trim($question['correct_option_text'] ?? '');
+                if($expected14 !== ''){
+                    $exp_ts14 = strtotime('2000-01-01 ' . $expected14);
+                    $stu_ts14 = strtotime('2000-01-01 ' . $student_answer_text);
+                    if($exp_ts14 && $stu_ts14 && date('H:i', $exp_ts14) == date('H:i', $stu_ts14)){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
+                }
+            } elseif($question_type == 15){
+                // Date & Time – compare as Y-m-d H:i
+                $expected15 = trim($question['correct_option_text'] ?? '');
+                if($expected15 !== ''){
+                    $exp_ts15 = strtotime($expected15);
+                    $stu_ts15 = strtotime($student_answer_text);
+                    if($exp_ts15 && $stu_ts15 && date('Y-m-d H:i', $exp_ts15) == date('Y-m-d H:i', $stu_ts15)){
+                        $is_correct = 1;
+                        $marks_obtained = $question_marks;
+                    }
                 }
             }
         } else {
@@ -7502,7 +7868,7 @@ if(@$_POST['formName']=='submit_assessment'){
         $query = "UPDATE assessment_submissions SET total_marks = $total_marks, obtained_marks = $obtained_marks, percentage = $percentage, status = 1, attempted_questions = $attempted_questions, pending_questions = $pending_questions, submitted_at = NOW() WHERE assessment_id = $assessment_id AND student_enrol_id = $student_enrol_id";
         $query1 = "UPDATE `assessment_assignments` SET `assessment_count`= $assessment_count WHERE assessment_id = $assessment_id AND student_enrol_id = $student_enrol_id"; 
         } else {
-        $query = "INSERT INTO assessment_submissions (assessment_id, student_enrol_id, total_marks, obtained_marks, percentage, status, attempted_questions, pending_questions) VALUES ($assessment_id, $student_enrol_id, $total_marks, $obtained_marks, $percentage, 1, $attempted_questions, $pending_questions)";
+        $query = "INSERT INTO assessment_submissions (assessment_id, student_enrol_id, total_marks, obtained_marks, percentage, status, attempted_questions, pending_questions, submitted_at) VALUES ($assessment_id, $student_enrol_id, $total_marks, $obtained_marks, $percentage, 1, $attempted_questions, $pending_questions, NOW())";
     $query1 = "UPDATE `assessment_assignments` SET `assessment_count`= $assessment_count WHERE assessment_id = $assessment_id AND student_enrol_id = $student_enrol_id"; 
        
         }

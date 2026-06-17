@@ -11,7 +11,7 @@ $user_id = $_SESSION['user_id'] ?? 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name          = trim($_POST['form_name']     ?? '');
     $description   = trim($_POST['description']   ?? '');
-    $status_str    = $_POST['status']             ?? 'draft';
+    $status_str    = 'draft';
     $marks         = intval($_POST['total_marks']   ?? 0);
     $passing_marks = intval($_POST['passing_marks'] ?? 0);
     $duration      = intval($_POST['duration']      ?? 0);
@@ -288,16 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <div class="cf-hint">Leave 0 for no time limit</div>
                                 </div>
 
-                                <div class="cf-field">
-                                    <label>Initial Status</label>
-                                    <div class="cf-select-wrap">
-                                        <select name="status" class="cf-select">
-                                            <option value="draft"    <?php echo (($_POST['status'] ?? 'draft') === 'draft')    ? 'selected' : ''; ?>>Draft</option>
-                                            <option value="active"   <?php echo (($_POST['status'] ?? '') === 'active')        ? 'selected' : ''; ?>>Active</option>
-                                            <option value="inactive" <?php echo (($_POST['status'] ?? '') === 'inactive')      ? 'selected' : ''; ?>>Inactive</option>
-                                        </select>
-                                    </div>
-                                </div>
+                                
 
                             </div><!-- /.cf-card-body -->
 

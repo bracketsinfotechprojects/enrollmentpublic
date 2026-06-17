@@ -197,13 +197,14 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                     <a href="javascript:void(0);"><i class="ti ti-user-plus"></i><span>Assessment</span><span class="menu-arrow"></span></a>
                                     <ul>
                                         <!-- <li><a href="create_assessment.php" class="<?php echo $current_page === 'create_assessment.php' ? 'active' : ''; ?>">Create Assessment</a></li> -->
-                                        <li><a href="assessment_list.php" class="<?php echo $current_page === 'assessment_list.php' ? 'active' : ''; ?>">Assessment List</a></li>
+                                        <!-- <li><a href="assessment_list.php" class="<?php echo $current_page === 'assessment_list.php' ? 'active' : ''; ?>">Assessment List</a></li> -->
+                                       <li><a href="assessment_new.php" class="<?php echo $current_page === 'assessment_new.php' ? 'active' : ''; ?>">Assessment List</a></li>
                                         <li><a href="assessment_result.php" class="<?php echo $current_page === 'assessment_result.php' ? 'active' : ''; ?>">Assessment Results</a></li>
                                     </ul>
                                 </li>
-                                <li>
-                                    <a href="assessment_new.php" class="<?php echo $current_page === 'assessment_new' ? 'active' : ''; ?>"><i class="ti ti-clipboard-list"></i><span>Assessment New</span></a>
-                                </li>
+                                <!-- <li>
+                                    <a href="assessment_new.php" class="<?//php echo $current_page === 'assessment_new' ? 'active' : ''; ?>"><i class="ti ti-clipboard-list"></i><span>Assessment New</span></a>
+                                </li> -->
                                 <?php } ?>
                             </ul>
                         </li>

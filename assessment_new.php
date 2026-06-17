@@ -233,6 +233,13 @@ function fmt_duration(int $min): string {
                                            class="action-btn" title="Add Question" style="width:auto;padding:0 10px;gap:5px;font-size:.78rem;font-weight:600;">
                                             <i class="ti ti-circle-plus"></i> Question
                                         </a>
+                                        <?php if(intval($a['status']) === 0): ?>
+                                        <button class="action-btn" title="Set Active"
+                                                style="width:auto;padding:0 10px;gap:5px;font-size:.78rem;font-weight:600;background:#1e3a5f;border-color:#1d4ed8;color:#60a5fa;"
+                                                onclick="activateAssessment(<?php echo intval($a['assessment_id']); ?>, '<?php echo htmlspecialchars(addslashes($a['assessment_name'])); ?>')">
+                                            <i class="ti ti-bolt"></i> Activate
+                                        </button>
+                                        <?php endif; ?>
                                         <?php if(intval($a['status']) === 1): ?>
                                         <a href="assign_student.php?id=<?php echo intval($a['assessment_id']); ?>"
                                            class="action-btn" title="Assign" style="width:auto;padding:0 10px;gap:5px;font-size:.78rem;font-weight:600;background:#0f2e1a;border-color:#166534;color:#22c55e;">
@@ -260,6 +267,20 @@ function fmt_duration(int $min): string {
 <div class="rightbar-overlay"></div>
 <?php include('includes/footer_includes.php'); ?>
 <script>
+function activateAssessment(id, name) {
+    if (!confirm('Activate "' + name + '"? All other assessments will be set to Draft.')) return;
+    fetch('assessment_new_action.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=activate_assessment&assessment_id=' + id
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { location.reload(); }
+        else { alert(data.message || 'Failed to activate.'); }
+    })
+    .catch(() => alert('Request failed.'));
+}
 function deleteAssessment(id, name) {
     if (!confirm('Delete assessment "' + name + '"? This cannot be undone.')) return;
     fetch('assessment_new_action.php', {

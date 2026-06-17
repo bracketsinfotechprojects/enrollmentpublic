@@ -30,4 +30,14 @@ if ($action === 'delete_assessment') {
     exit;
 }
 
+if ($action === 'activate_assessment') {
+    if ($assessment_id <= 0) { echo json_encode(['success' => false, 'message' => 'Invalid assessment.']); exit; }
+    // Set all other assessments to Draft (status = 0)
+    mysqli_query($connection, "UPDATE `assessment` SET status = 0 WHERE assessment_id != $assessment_id");
+    // Set this assessment to Active (status = 1)
+    mysqli_query($connection, "UPDATE `assessment` SET status = 1 WHERE assessment_id = $assessment_id");
+    echo json_encode(['success' => true]);
+    exit;
+}
+
 echo json_encode(['success' => false, 'message' => 'Unknown action.']);

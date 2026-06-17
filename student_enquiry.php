@@ -423,6 +423,12 @@ if(isset($_GET['view']) && $_GET['view']=='list'){
         }
     }
 
+    // Ensure counsil_outcome column exists (added in a later migration)
+    $col_chk = mysqli_query($connection, "SHOW COLUMNS FROM counseling_details LIKE 'counsil_outcome'");
+    if(!$col_chk || mysqli_num_rows($col_chk) === 0){
+        mysqli_query($connection, "ALTER TABLE counseling_details ADD COLUMN counsil_outcome TEXT DEFAULT NULL");
+    }
+
     $enquiryIds=mysqli_query($connection,"SELECT st_enquiry_id,st_name,st_phno from student_enquiry where st_enquiry_status!=1");
     $enquiryIdsCounselling=mysqli_query($connection,"SELECT st_enquiry_id,st_name,st_phno from student_enquiry where st_enquiry_status!=1");
     $enquiryIdsFollowup=mysqli_query($connection,"SELECT st_enquiry_id,st_name,st_phno from student_enquiry where st_enquiry_status!=1");

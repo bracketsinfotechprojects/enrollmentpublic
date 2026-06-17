@@ -12,6 +12,11 @@ if($assessment_id > 0){
     if($qr) while($row = mysqli_fetch_assoc($qr)) $questions[] = $row;
 }
 if(!$assessment){ header("Location: assessment_new.php"); exit; }
+// Auto-add question_image column if it doesn't exist yet
+$col_chk = mysqli_query($connection, "SHOW COLUMNS FROM assessment_questions LIKE 'question_image'");
+if(!$col_chk || mysqli_num_rows($col_chk) === 0){
+    mysqli_query($connection, "ALTER TABLE assessment_questions ADD COLUMN question_image VARCHAR(255) DEFAULT NULL");
+}
 $totalQuestionsMarks = array_sum(array_column($questions,'marks'));
 $remaining = intval($assessment['marks']) - $totalQuestionsMarks;
 
@@ -305,8 +310,20 @@ var existingQuestions = <?php
       'option_2'              => $q['option_2']??'',
       'option_3'              => $q['option_3']??'',
       'option_4'              => $q['option_4']??'',
-      'correct_option'        => $q['correct_option']??'',
+      'correct_option'        => (function($q){
+                                  $co = $q['correct_option']??'';
+                                  if(intval($q['question_type']??1) === 2){
+                                    if($co==='1'||$co===1) $co='True';
+                                    elseif($co==='0'||$co===0) $co='False';
+                                  }
+                                  return $co;
+                                })($q),
       'correct_options_multi' => $q['correct_options_multi']??'',
+      'correct_option_text'   => $q['correct_option_text']??'',
+      'placeholder'           => $q['placeholder']??'',
+      'min'                   => $q['min']??'',
+      'max'                   => $q['max']??'',
+      'question_image'        => $q['question_image']??'',
       'marks'                 => intval($q['marks']),
     ];
   }
@@ -395,6 +412,19 @@ function buildForm(type, qdata){
     <textarea class="pf-ta" id="pf_qtext" rows="3" placeholder="Enter question or label…">${isEdit?esc(qdata.question_text):''}</textarea>
   </div>`;
 
+  // ── Question Image (optional — all types except Image-Based / type 5) ──
+  var qei=isEdit?(qdata.question_image||''):'';
+  if(type!==5) h+=`<div class="pf-sec">
+    <div class="pf-lbl">Question Image <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
+    <div class="img-box" onclick="document.getElementById('pf_q_imgfile').click()">
+      <i class="ti ti-upload" style="font-size:1.3rem;display:block;margin-bottom:4px"></i>
+      Click to upload (JPG/PNG/GIF/WEBP, max 2MB)
+    </div>
+    <input type="file" id="pf_q_imgfile" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" onchange="prevQImg(this)">
+    <input type="hidden" id="pf_q_existimg" value="${esc(qei)}">
+    <div id="pf_q_imgprev">${qei?'<div style="position:relative;display:inline-block;margin-top:8px"><img src="uploads/question_images/'+esc(qei)+'" class="img-prev"><button type="button" onclick="clearQImg()" style="position:absolute;top:4px;right:4px;background:#ef4444;border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:.72rem;cursor:pointer">Remove</button></div>':''}</div>
+  </div>`;
+
   // ── Type-specific sections ──
 
   // QUIZ TYPES
@@ -435,10 +465,10 @@ function buildForm(type, qdata){
     </div>
     <div class="pf-sec">
       <div class="pf-lbl">Expected Answer <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <input type="text" class="pf-inp" id="pf_textans" placeholder="Leave blank if open-ended" value="${isEdit?esc(qdata.correct_options_multi):''}">
+      <input type="text" class="pf-inp" id="pf_textans" placeholder="Leave blank if open-ended" value="${isEdit?esc(qdata.correct_option_text):''}">
     </div>`;
   } else if(type===7){ // Number
-    var mn=isEdit?(qdata.option_1||''):'', mx=isEdit?(qdata.option_2||''):'';
+    var mn=isEdit?(qdata.min||''):'', mx=isEdit?(qdata.max||''):'';
     h+=`<div class="pf-sec">
       <div class="pf-lbl">Min / Max</div>
       <div class="pf-row2">
@@ -447,8 +477,12 @@ function buildForm(type, qdata){
       </div>
     </div>
     <div class="pf-sec">
+      <div class="pf-lbl">Placeholder <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
+      <input type="text" class="pf-inp" id="pf_placeholder" placeholder="e.g. Enter a number…" value="${isEdit?esc(qdata.placeholder):''}">
+    </div>
+    <div class="pf-sec">
       <div class="pf-lbl">Expected Answer <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <input type="number" class="pf-inp" id="pf_textans" placeholder="Correct number value" value="${isEdit?esc(qdata.correct_options_multi):''}">
+      <input type="number" class="pf-inp" id="pf_textans" placeholder="Correct number value" value="${isEdit?esc(qdata.correct_option_text):''}">
     </div>`;
   } else if(type===8){ // URL
     h+=`<div class="pf-sec">
@@ -456,22 +490,20 @@ function buildForm(type, qdata){
       <input type="text" class="pf-inp" id="pf_placeholder" placeholder="e.g. https://example.com" value="${isEdit?esc(qdata.option_1):''}">
     </div>
     <div class="pf-sec">
-      <div class="pf-lbl">Expected URL <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <input type="url" class="pf-inp" id="pf_textans" placeholder="https://…" value="${isEdit?esc(qdata.correct_options_multi):''}">
+      <div class="pf-lbl">Expected URL</div>
+      <input type="url" class="pf-inp" id="pf_textans" placeholder="https://…" value="${isEdit?esc(qdata.correct_option_text):''}">
     </div>`;
   } else if(type===9){ // Textarea
     var rows=isEdit?(qdata.option_1||'4'):'4';
-    h+=`<div class="pf-sec">
-      <div class="pf-lbl">Rows</div>
-      <input type="number" class="pf-inp" id="pf_tarows" min="2" max="20" value="${esc(rows)}" placeholder="4">
-    </div>
+    h+=`
+    
     <div class="pf-sec">
       <div class="pf-lbl">Placeholder</div>
-      <input type="text" class="pf-inp" id="pf_placeholder" placeholder="e.g. Write your answer…" value="${isEdit?esc(qdata.option_2):''}">
+      <input type="text" class="pf-inp" id="pf_placeholder" placeholder="e.g. Write your answer…" value="${isEdit?esc(qdata.placeholder):''}">
     </div>
     <div class="pf-sec">
       <div class="pf-lbl">Model Answer <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <textarea class="pf-ta" id="pf_textans" rows="3" placeholder="Reference answer…">${isEdit?esc(qdata.correct_options_multi):''}</textarea>
+      <textarea class="pf-ta" id="pf_textans" rows="3" placeholder="Reference answer…">${isEdit?esc(qdata.correct_option_text):''}</textarea>
     </div>`;
 
   // CHOICE FIELDS
@@ -486,17 +518,17 @@ function buildForm(type, qdata){
   } else if(type===13){ // Date
     h+=`<div class="pf-sec">
       <div class="pf-lbl">Correct Date <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <input type="date" class="pf-inp" id="pf_textans" value="${isEdit?esc(qdata.correct_options_multi):''}">
+      <input type="date" class="pf-inp" id="pf_textans" value="${isEdit?esc(qdata.correct_option_text):''}">
     </div>`;
   } else if(type===14){ // Time
     h+=`<div class="pf-sec">
       <div class="pf-lbl">Correct Time <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <input type="time" class="pf-inp" id="pf_textans" value="${isEdit?esc(qdata.correct_options_multi):''}">
+      <input type="time" class="pf-inp" id="pf_textans" value="${isEdit?esc(qdata.correct_option_text):''}">
     </div>`;
   } else if(type===15){ // Date & Time
     h+=`<div class="pf-sec">
-      <div class="pf-lbl">Correct Date &amp; Time <small style="color:var(--text3);font-weight:400;text-transform:none">(optional)</small></div>
-      <input type="datetime-local" class="pf-inp" id="pf_textans" value="${isEdit?esc(qdata.correct_options_multi):''}">
+      <div class="pf-lbl">Correct Date &amp; Time</div>
+      <input type="datetime-local" class="pf-inp" id="pf_textans" value="${isEdit?esc(qdata.correct_option_text):''}">
     </div>`;
   }
 
@@ -523,6 +555,17 @@ function buildForm(type, qdata){
 
   // Post-render: highlight correct options for existing
   if(isEdit){
+    if(type===2){
+      var _tfVal=String(qdata.correct_option||'').trim();
+      if(_tfVal==='1') _tfVal='True';
+      else if(_tfVal==='0') _tfVal='False';
+      setTimeout(function(){
+        if(_tfVal==='True'||_tfVal==='False'){
+          var r=document.querySelector('input[name="pf_tf"][value="'+_tfVal+'"]');
+          if(r){ r.checked=true; tfSel(); }
+        }
+      },0);
+    }
     if(type===1||type===3||type===5) hiCorrect(type);
     if(type===10||type===11||type===12) hiDynCorrect(type,qdata);
   }
@@ -560,9 +603,17 @@ function dynamicOptionsSection(qdata,isEdit,kind,inputName){
   }
   if(!saved.length) saved=['','',''];
 
-  var correctRaw=isEdit?(qdata.correct_options_multi||''):'';
   var correctArr=[];
-  try{ correctArr=JSON.parse(correctRaw); }catch(e){ if(correctRaw) correctArr=[correctRaw]; }
+  if(isEdit){
+    if(kind==='radio'){
+      // type 11 saves correct answer in correct_option (single index string)
+      var co=qdata.correct_option||'';
+      if(co) correctArr=[String(co)];
+    } else {
+      var correctRaw=qdata.correct_options_multi||'';
+      try{ correctArr=JSON.parse(correctRaw); }catch(e){ if(correctRaw) correctArr=[correctRaw]; }
+    }
+  }
 
   var h=`<div class="pf-sec">
     <div class="pf-lbl">Options <small style="color:var(--text3);font-weight:400;text-transform:none">(mark correct)</small></div>
@@ -586,6 +637,7 @@ function dynamicOptionsSection(qdata,isEdit,kind,inputName){
 function addDynOpt(kind,inputName){
   var container=document.getElementById('dynOpts');
   var rows=container.querySelectorAll('.opt-row');
+
   var idx=rows.length+1;
   var inp=kind==='checkbox'?'checkbox':'radio';
   var row=document.createElement('div');
@@ -644,6 +696,26 @@ function prevImg(input){
   var reader=new FileReader();
   reader.onload=function(e){ var p=document.getElementById('pf_imgprev'); p.innerHTML='<img src="'+e.target.result+'" class="img-prev">'; };
   reader.readAsDataURL(file);
+}
+
+function prevQImg(input){
+  var file=input.files[0]; if(!file) return;
+  if(file.size>2*1024*1024){ showToast('Image too large (max 2MB)','error'); input.value=''; return; }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    document.getElementById('pf_q_imgprev').innerHTML=
+      '<div style="position:relative;display:inline-block;margin-top:8px">' +
+      '<img src="'+e.target.result+'" class="img-prev">' +
+      '<button type="button" onclick="clearQImg()" style="position:absolute;top:4px;right:4px;background:#ef4444;border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:.72rem;cursor:pointer">Remove</button></div>';
+    document.getElementById('pf_q_existimg').value='';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearQImg(){
+  document.getElementById('pf_q_imgprev').innerHTML='';
+  document.getElementById('pf_q_existimg').value='';
+  var fi=document.getElementById('pf_q_imgfile'); if(fi) fi.value='';
 }
 
 function cancelEdit(){
@@ -721,38 +793,80 @@ function saveQ(type,qid){
     else if(ei) fd.append('existing_image',ei);
     else{ showToast('Upload a question image','error'); resetBtn(btn,isEdit); return; }
 
-  } else if(type===6||type===8){ // Text / URL
+  } else if(type===6){ // Text
     fd.append('option_1',val('pf_placeholder'));
-    fd.append('correct_option',val('pf_textans'));
+    fd.append('correct_option_text',val('pf_textans'));
+  } else if(type===8){ // URL
+    fd.append('option_1',val('pf_placeholder'));
+    var urlVal=val('pf_textans');
+    if(!urlVal){ showToast('Expected URL is required','error'); resetBtn(btn,isEdit); return; }
+    fd.append('correct_option_text',urlVal);
 
   } else if(type===7){ // Number
-    fd.append('option_1',val('pf_nummin'));
-    fd.append('option_2',val('pf_nummax'));
-    fd.append('correct_option',val('pf_textans'));
+    fd.append('min',val('pf_nummin'));
+    fd.append('max',val('pf_nummax'));
+    fd.append('placeholder',val('pf_placeholder'));
+    fd.append('correct_option_text',val('pf_textans'));
 
   } else if(type===9){ // Textarea
     fd.append('option_1',val('pf_tarows')||'4');
-    fd.append('option_2',val('pf_placeholder'));
-    fd.append('correct_option',val('pf_textans'));
+    fd.append('placeholder',val('pf_placeholder'));
+    fd.append('correct_option_text',val('pf_textans'));
 
-  } else if(type===10||type===11||type===12){ // Dropdown / Radio / Checkbox
+  } else if(type===10){ // Dropdown – all options in option_1 (JSON), correct option in correct_options_multi
     var rows=document.querySelectorAll('#dynOpts .opt-row');
     var opts=[]; var corrects=[];
     rows.forEach(function(row,idx){
-      var txt=row.querySelector('.pf-inp'); var chk=row.querySelector('input[type=radio],input[type=checkbox]');
+      var txt=row.querySelector('.pf-inp'); var chk=row.querySelector('input[type=radio]');
       var ov=txt?txt.value.trim():'';
       opts.push(ov);
       if(chk&&chk.checked) corrects.push(String(idx+1));
     });
     if(opts.some(o=>!o)){ showToast('Fill all option labels','error'); resetBtn(btn,isEdit); return; }
-    if(!corrects.length){ showToast('Mark at least one correct option','error'); resetBtn(btn,isEdit); return; }
+    if(!corrects.length){ showToast('Select the correct option','error'); resetBtn(btn,isEdit); return; }
     fd.append('option_1',JSON.stringify(opts));
     fd.append('correct_options_multi',JSON.stringify(corrects));
-    fd.append('correct_option',corrects[0]);
+  } else if(type===11){ // Radio – all options in option_1 (JSON), correct option in correct_option
+    var rows=document.querySelectorAll('#dynOpts .opt-row');
+    var opts=[]; var correct='';
+    rows.forEach(function(row,idx){
+      var txt=row.querySelector('.pf-inp'); var chk=row.querySelector('input[type=radio]');
+      var ov=txt?txt.value.trim():'';
+      opts.push(ov);
+      if(chk&&chk.checked) correct=String(idx+1);
+    });
+    if(opts.some(o=>!o)){ showToast('Fill all option labels','error'); resetBtn(btn,isEdit); return; }
+    if(!correct){ showToast('Select the correct option','error'); resetBtn(btn,isEdit); return; }
+    fd.append('option_1',JSON.stringify(opts));
+    fd.append('correct_option',correct);
+  } else if(type===12){ // Checkbox – multiple correct answers allowed
+    var rows=document.querySelectorAll('#dynOpts .opt-row');
+    var opts=[]; var corrects=[];
+    rows.forEach(function(row,idx){
+      var txt=row.querySelector('.pf-inp'); var chk=row.querySelector('input[type=checkbox]');
+      var ov=txt?txt.value.trim():'';
+      opts.push(ov);
+      if(chk&&chk.checked) corrects.push(String(idx+1));
+    });
+    if(opts.some(o=>!o)){ showToast('Fill all option labels','error'); resetBtn(btn,isEdit); return; }
+    if(!corrects.length){ showToast('Mark at least one correct answer','error'); resetBtn(btn,isEdit); return; }
+    fd.append('option_1',JSON.stringify(opts));
+    fd.append('correct_options_multi',JSON.stringify(corrects));
 
-  } else if(type===13||type===14||type===15){ // Date / Time / DateTime
-    fd.append('correct_option',val('pf_textans'));
+  } else if(type===13){ // Date
+    fd.append('correct_option_text',val('pf_textans'));
+  } else if(type===14){ // Time
+    fd.append('correct_option_text',val('pf_textans'));
+  } else if(type===15){ // DateTime
+    var dtVal=val('pf_textans');
+    if(!dtVal){ showToast('Correct Date & Time is required','error'); resetBtn(btn,isEdit); return; }
+    fd.append('correct_option_text',dtVal);
   }
+
+  // ── Generic optional image (all types) ──
+  var qImgFile=(document.getElementById('pf_q_imgfile')||{files:[]}).files[0];
+  if(qImgFile) fd.append('question_image_file',qImgFile);
+  fd.append('existing_question_image', val('pf_q_existimg'));
 
   fetch('includes/datacontrol.php',{method:'POST',body:fd})
     .then(r=>r.text())

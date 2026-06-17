@@ -165,8 +165,17 @@ function getQuestionTypeName($type) {
                                                         )</span>
                                                     </label>
                                                 </div>
-                                                
-                                                <?php 
+
+                                                <?php if(!empty($q['question_image'])): ?>
+                                                <div class="mb-3 text-center">
+                                                    <img src="uploads/question_images/<?php echo htmlspecialchars($q['question_image']); ?>"
+                                                         alt="Question Image"
+                                                         class="question-img"
+                                                         style="max-width:100%;max-height:340px;border-radius:8px;border:1px solid #dee2e6;">
+                                                </div>
+                                                <?php endif; ?>
+
+                                                <?php
                                                 $qt = $q['question_type'] ?? 1;
                                                 if($qt == 1): // Single Choice
                                                 ?>
@@ -189,11 +198,11 @@ function getQuestionTypeName($type) {
                                                 <?php elseif($qt == 2): // True/False ?>
                                                 <div class="mb-3 options-container" data-question-id="<?php echo $q['question_id']; ?>">
                                                     <div class="form-check mb-2 option-item" onclick="selectOption(<?php echo $q['question_id']; ?>, 'True', 2)">
-                                                        <input class="form-check-input" type="radio" name="answer_<?php echo $q['question_id']; ?>" id="q<?php echo $q['question_id']; ?>_true" value="True">
+                                                        <input class="form-check-input" type="radio" name="answer_<?php echo $q['question_id']; ?>" id="q<?php echo $q['question_id']; ?>_true" value="1">
                                                         <label class="form-check-label" for="q<?php echo $q['question_id']; ?>_true">True</label>
                                                     </div>
                                                     <div class="form-check mb-2 option-item" onclick="selectOption(<?php echo $q['question_id']; ?>, 'False', 2)">
-                                                        <input class="form-check-input" type="radio" name="answer_<?php echo $q['question_id']; ?>" id="q<?php echo $q['question_id']; ?>_false" value="False">
+                                                        <input class="form-check-input" type="radio" name="answer_<?php echo $q['question_id']; ?>" id="q<?php echo $q['question_id']; ?>_false" value="2">
                                                         <label class="form-check-label" for="q<?php echo $q['question_id']; ?>_false">False</label>
                                                     </div>
                                                 </div>
