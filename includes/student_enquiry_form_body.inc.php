@@ -32,10 +32,10 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="col-md-6">
+                                                <div class="col-md-6 d-none">
                                                     <div class="mb-3">
                                                         <label class="form-label" for="enquiry_date">Date<span class="asterisk">*</span></label>
-                                                        <input type="date" class="form-control" id="enquiry_date" value="<?php echo  $queryRes['st_enquiry_date']!='' ? date('Y-m-d',strtotime($queryRes['st_enquiry_date'])) : ''; ?>">
+                                                        <input type="date" class="form-control" id="enquiry_date" value="<?php echo  $queryRes['st_enquiry_date']!='' ? date('Y-m-d',strtotime($queryRes['st_enquiry_date'])) : date('Y-m-d'); ?>">
                                                         <div class="error-feedback">
                                                             Please select the Date
                                                         </div>

@@ -3,7 +3,7 @@ include('includes/dbconnect.php');
 session_start();
 
 if (!isset($_SESSION['user_id']) || $_SESSION['user_id'] === '' || ($_SESSION['user_type'] != 1 && $_SESSION['user_type'] != 2)) {
-    header('Location: student_login.php');
+    header('Location: index.php');
     exit;
 }
 

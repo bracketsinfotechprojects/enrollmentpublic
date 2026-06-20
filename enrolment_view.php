@@ -521,18 +521,47 @@ $photos = json_decode($r['photo_paths'] ?? '[]', true) ?: [];
                     </div>
                 </div>
 
-                <!-- PHOTOS -->
+                <!-- UPLOADED DOCUMENTS -->
                 <?php if (!empty($photos)): ?>
-                <div class="section-header">UPLOADED PHOTOS</div>
+                <div class="section-header">UPLOADED DOCUMENTS</div>
                 <div class="section-body">
                     <div class="d-flex flex-wrap gap-3">
-                        <?php foreach ($photos as $photo): ?>
-                        <img src="uploads/<?php echo htmlspecialchars($photo); ?>"
-                             alt="Photo"
-                             class="photo-thumb"
-                             data-src="uploads/<?php echo htmlspecialchars($photo); ?>"
-                             style="height:100px;width:auto;border-radius:6px;border:1px solid #dee2e6;cursor:zoom-in;transition:box-shadow .15s,transform .15s;"
-                             onerror="this.style.display='none'">
+                        <?php foreach ($photos as $photo):
+                            $is_obj   = is_array($photo);
+                            $doc_file = $is_obj ? ($photo['file'] ?? '') : $photo;
+                            $doc_name = $is_obj ? ($photo['name'] ?? basename($doc_file)) : basename($photo);
+                            $ext      = strtolower(pathinfo($doc_file, PATHINFO_EXTENSION));
+                            $is_image = in_array($ext, ['jpg','jpeg','png','gif','webp']);
+                        ?>
+                        <a href="uploads/<?php echo htmlspecialchars($doc_file); ?>"
+                           target="_blank"
+                           class="text-decoration-none"
+                           title="<?php echo htmlspecialchars($doc_name); ?>">
+                            <div class="d-flex flex-column align-items-center gap-1" style="width:100px;">
+                                <?php if ($is_image): ?>
+                                <img src="uploads/<?php echo htmlspecialchars($doc_file); ?>"
+                                     alt="<?php echo htmlspecialchars($doc_name); ?>"
+                                     class="doc-img-thumb"
+                                     data-src="uploads/<?php echo htmlspecialchars($doc_file); ?>"
+                                     data-name="<?php echo htmlspecialchars($doc_name); ?>"
+                                     style="width:100px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #dee2e6;cursor:zoom-in;transition:box-shadow .15s,transform .15s;"
+                                     onerror="this.closest('a').setAttribute('href','uploads/<?php echo htmlspecialchars($doc_file); ?>');this.closest('.d-flex').querySelector('.doc-img-thumb')&&this.classList.remove('doc-img-thumb');this.style.display='none'">
+                                <?php else: ?>
+                                <div class="d-flex align-items-center justify-content-center bg-light border rounded"
+                                     style="width:100px;height:80px;border-radius:6px;">
+                                    <?php
+                                    $icon = 'ti-file';
+                                    if ($ext === 'pdf')                         $icon = 'ti-file-type-pdf';
+                                    elseif (in_array($ext, ['doc','docx']))     $icon = 'ti-file-type-doc';
+                                    elseif (in_array($ext, ['xls','xlsx']))     $icon = 'ti-file-type-xls';
+                                    elseif (in_array($ext, ['ppt','pptx']))     $icon = 'ti-file-type-ppt';
+                                    ?>
+                                    <i class="ti <?php echo $icon; ?> text-primary" style="font-size:2.2rem;"></i>
+                                </div>
+                                <?php endif; ?>
+                                <span class="text-truncate text-dark" style="font-size:.75rem;max-width:100px;"><?php echo htmlspecialchars($doc_name); ?></span>
+                            </div>
+                        </a>
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -695,8 +724,9 @@ $(function(){
 <style>
 .sig-zoom-thumb:hover { box-shadow: 0 0 0 3px #0d6efd55; }
 .photo-thumb:hover { box-shadow: 0 4px 16px rgba(0,0,0,.22); transform: scale(1.04); }
+.doc-img-thumb:hover { box-shadow: 0 4px 16px rgba(0,0,0,.22); transform: scale(1.04); }
 </style>
-<!-- Photo Lightbox Modal -->
+<!-- Photo / Document Lightbox Modal -->
 <div class="modal fade" id="photoLightboxModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:90vw;width:auto;">
         <div class="modal-content bg-transparent border-0 shadow-none">
@@ -704,6 +734,7 @@ $(function(){
                 <button type="button" class="btn-close btn-close-white position-absolute"
                         data-bs-dismiss="modal"
                         style="top:-10px;right:-10px;background-color:#333;border-radius:50%;padding:8px;z-index:10;"></button>
+                <div id="photoLightboxTitle" class="text-white fw-semibold mb-2" style="font-size:.95rem;text-shadow:0 1px 4px rgba(0,0,0,.7);"></div>
                 <img id="photoLightboxImg" src="" alt="Photo"
                      style="max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);">
             </div>
@@ -722,6 +753,19 @@ $(function(){
         $('#photoLightboxImg').attr('src', $(this).data('src'));
         var modal = new bootstrap.Modal(document.getElementById('photoLightboxModal'));
         modal.show();
+    });
+
+    $(document).on('click', '.doc-img-thumb', function(e){
+        e.preventDefault();
+        $('#photoLightboxImg').attr('src', $(this).data('src'));
+        $('#photoLightboxTitle').text($(this).data('name') || '');
+        var modal = new bootstrap.Modal(document.getElementById('photoLightboxModal'));
+        modal.show();
+    });
+
+    // Clear title when modal closes (so it doesn't show on sig lightbox usage)
+    $('#photoLightboxModal').on('hidden.bs.modal', function(){
+        $('#photoLightboxTitle').text('');
     });
 });
 </script>

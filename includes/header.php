@@ -1,7 +1,7 @@
 <?php 
 ini_set('display_errors', '0');
 session_start(); ?>
-//test
+
 <?php 
 $CRM_ASSET_BASE = 'crm/html/template/assets';
 $is_student = (isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'student');

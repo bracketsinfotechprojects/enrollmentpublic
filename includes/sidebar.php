@@ -35,7 +35,7 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
             "SELECT id FROM assessment_assignments
              WHERE student_enrol_id = $sid AND enrolment_status = 1 LIMIT 1"
         );
-        if ($enr_check && mysqli_num_rows($enr_check) > 0) {
+       if ($enr_check && mysqli_num_rows($enr_check) > 0) {
             $student_enrolment_unlocked = true;
         }
 
@@ -183,11 +183,7 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                 </li>
                                 <?php } ?>
 
-                                <?php if(@$_SESSION['user_type']==1 || @$_SESSION['user_type']==2){ ?>
-                                <li>
-                                    <a href="/assessment/enrollmentpublic/easyforms" target="_blank"><i class="ti ti-forms"></i><span>Form Builder</span></a>
-                                </li>
-                                <?php } ?>
+                               
 
                                 <?php if(@$_SESSION['user_type']==1){ ?>
                                 <li>
@@ -198,7 +194,7 @@ if ($is_student_sidebar && isset($_SESSION['user_id']) && $_SESSION['user_id'] !
                                     <ul>
                                         <!-- <li><a href="create_assessment.php" class="<?php echo $current_page === 'create_assessment.php' ? 'active' : ''; ?>">Create Assessment</a></li> -->
                                         <!-- <li><a href="assessment_list.php" class="<?php echo $current_page === 'assessment_list.php' ? 'active' : ''; ?>">Assessment List</a></li> -->
-                                       <li><a href="assessment_new.php" class="<?php echo $current_page === 'assessment_new.php' ? 'active' : ''; ?>">Assessment List</a></li>
+                                       <li><a href="assessment_list.php" class="<?php echo $current_page === 'assessment_list.php' ? 'active' : ''; ?>">Assessment List</a></li>
                                         <li><a href="assessment_result.php" class="<?php echo $current_page === 'assessment_result.php' ? 'active' : ''; ?>">Assessment Results</a></li>
                                     </ul>
                                 </li>

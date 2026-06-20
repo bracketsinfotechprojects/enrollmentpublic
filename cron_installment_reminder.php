@@ -27,6 +27,7 @@ require_once __DIR__ . '/includes/dbconnect.php';
 require_once __DIR__ . '/includes/stripe_config.php';
 
 $today     = date('Y-m-d');
+$tomorrow  = date('Y-m-d', strtotime('+1 day'));
 $log_lines = [];
 
 function cron_log(string $msg): void {
@@ -37,7 +38,7 @@ function cron_log(string $msg): void {
 }
 
 cron_log("Installment reminder cron started.");
-cron_log("Today: $today");
+cron_log("Today: $today | Tomorrow: $tomorrow");
 
 // ── Step 1: Mark invoices as overdue where all pending installments are past due ──
 $mark_overdue = mysqli_query($connection,
@@ -61,7 +62,7 @@ if ($col_check && mysqli_num_rows($col_check) === 0) {
     cron_log("Column reminder_sent added to enrolment_invoice_installments.");
 }
 
-// ── Step 2: Fetch pending installments past due date where reminder not yet sent ──
+// ── Step 2: Fetch pending installments due today, tomorrow, or already overdue ──
 $res = mysqli_query($connection,
     "SELECT eis.id          AS inst_id,
             eis.invoice_id,
@@ -80,9 +81,9 @@ $res = mysqli_query($connection,
      FROM enrolment_invoice_installments eis
      LEFT JOIN enrolment_invoices ei ON ei.id = eis.invoice_id
      LEFT JOIN courses c ON c.course_id = eis.course_id
-     WHERE eis.status       = 'pending'
+     WHERE eis.status        = 'pending'
        AND eis.reminder_sent = 'No'
-       AND eis.due_date < '$today'
+       AND eis.due_date     <= '$tomorrow'
        AND ei.email_address IS NOT NULL
        AND ei.email_address != ''
      ORDER BY eis.due_date ASC"
@@ -98,7 +99,7 @@ $sent      = 0;
 $failed    = 0;
 $skipped   = 0;
 
-cron_log("Overdue installments found: $total");
+cron_log("Installments to remind (due today, tomorrow, or overdue): $total");
 
 // ── Step 3: Send reminder email for each overdue installment ──
 while ($row = mysqli_fetch_assoc($res)) {
@@ -119,7 +120,36 @@ while ($row = mysqli_fetch_assoc($res)) {
         continue;
     }
 
-    $subject = "Payment Reminder – Invoice $inv_number (Overdue $days_over days)";
+    // Determine due status for subject + email body
+    $inst_due = $row['due_date'];
+    if ($inst_due === $tomorrow) {
+        $due_status   = 'due_tomorrow';
+        $status_label = 'Due Tomorrow';
+        $subject      = "Payment Reminder – Invoice $inv_number is due tomorrow";
+        $alert_color  = '#fef3c7';
+        $alert_border = '#f59e0b';
+        $alert_text   = '#92400e';
+        $alert_msg    = 'Your payment is <strong>due tomorrow (' . $due_date . ')</strong>. Please ensure your payment is arranged today.';
+        $status_cell  = '<td style="color:#d97706;font-weight:600;">Due Tomorrow</td>';
+    } elseif ($inst_due === $today) {
+        $due_status   = 'due_today';
+        $status_label = 'Due Today';
+        $subject      = "Payment Reminder – Invoice $inv_number is due today";
+        $alert_color  = '#fff7ed';
+        $alert_border = '#ea580c';
+        $alert_text   = '#9a3412';
+        $alert_msg    = 'Your payment is <strong>due today (' . $due_date . ')</strong>. Please make your payment to avoid any disruption to your enrolment.';
+        $status_cell  = '<td style="color:#ea580c;font-weight:600;">Due Today</td>';
+    } else {
+        $due_status   = 'overdue';
+        $status_label = "Overdue {$days_over}d";
+        $subject      = "Payment Reminder – Invoice $inv_number (Overdue $days_over day" . ($days_over !== 1 ? 's' : '') . ")";
+        $alert_color  = '#fee2e2';
+        $alert_border = '#dc2626';
+        $alert_text   = '#991b1b';
+        $alert_msg    = 'Your payment is <strong>overdue by ' . $days_over . ' day' . ($days_over !== 1 ? 's' : '') . '</strong>. Invoice <strong>' . htmlspecialchars($inv_number) . '</strong> was due on ' . $due_date . '.';
+        $status_cell  = '<td style="color:#dc2626;font-weight:600;">Overdue ' . $days_over . ' day' . ($days_over !== 1 ? 's' : '') . '</td>';
+    }
 
     $body = '
 <!DOCTYPE html>
@@ -131,8 +161,6 @@ body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; backg
 .header h2 { margin: 0; font-size: 1.2rem; }
 .header p  { margin: 4px 0 0; font-size: .85rem; color: #94a3b8; }
 .body { padding: 28px 32px; }
-.alert { background: #fee2e2; border-left: 4px solid #dc2626; padding: 14px 18px; border-radius: 4px; margin-bottom: 22px; }
-.alert strong { color: #991b1b; }
 .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
 .detail-table td { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; font-size: .9rem; }
 .detail-table td:first-child { color: #6b7280; width: 40%; }
@@ -149,20 +177,19 @@ body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; backg
   </div>
   <div class="body">
     <p>Dear <strong>' . htmlspecialchars($student) . '</strong>,</p>
-    <div class="alert">
-      <strong>Your payment is overdue by ' . $days_over . ' day' . ($days_over !== 1 ? 's' : '') . '.</strong><br>
-      Invoice <strong>' . htmlspecialchars($inv_number) . '</strong> has an outstanding balance that was due on ' . $due_date . '.
+    <div style="background:' . $alert_color . ';border-left:4px solid ' . $alert_border . ';padding:14px 18px;border-radius:4px;margin-bottom:22px;color:' . $alert_text . ';">
+      ' . $alert_msg . '
     </div>
     <table class="detail-table">
       <tr><td>Invoice Number</td><td>' . htmlspecialchars($inv_number) . '</td></tr>
       <tr><td>Course</td><td>' . htmlspecialchars($course) . '</td></tr>
       <tr><td>Due Date</td><td>' . $due_date . '</td></tr>
-      <tr><td>Days Overdue</td><td style="color:#dc2626;">' . $days_over . ' days</td></tr>
+      <tr><td>Status</td>' . $status_cell . '</tr>
       <tr><td>Amount Due</td><td><span class="amount">$' . number_format($total_due, 2) . ' ' . $currency . '</span></td></tr>
     </table>
-    <p>Please arrange payment immediately to avoid any disruption to your enrolment.</p>
+    <p>Please arrange payment promptly to avoid any disruption to your enrolment.</p>
     <p>If you have already made a payment, please disregard this notice or contact us to confirm receipt.</p>
-    <a href="' . APP_BASE_URL . '/installment_view.php?id=' . $inst_id . '" class="btn">View </a>
+    <a href="' . APP_BASE_URL . '/installment_view.php?id=' . $inst_id . '" class="btn">View & Pay Invoice</a>
     <p style="margin-top:24px;font-size:.85rem;color:#6b7280;">
       If you have any questions, please contact us at
       <a href="mailto:accounts@nationalcollege.edu.au">accounts@nationalcollege.edu.au</a>.
@@ -181,14 +208,14 @@ body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; backg
             'meta'           => [
                 'installment_id' => $inst_id,
                 'invoice_number' => $inv_number,
-                'days_overdue'   => $days_over,
+                'due_status'     => $due_status,
                 'amount_due'     => $total_due,
             ],
         ]);
         mysqli_query($connection,
             "UPDATE enrolment_invoice_installments SET reminder_sent = 'Yes' WHERE id = $inst_id"
         );
-        cron_log("  SENT inst#$inst_id → $email_to ($inv_number, \$$total_due, {$days_over}d overdue)");
+        cron_log("  SENT inst#$inst_id → $email_to ($inv_number, \$$total_due, $status_label)");
         $sent++;
     } catch (\Throwable $e) {
         cron_log("  FAIL inst#$inst_id → $email_to — " . $e->getMessage());

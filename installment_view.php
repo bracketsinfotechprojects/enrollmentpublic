@@ -308,9 +308,84 @@ unset($_SESSION['stripe_flash']);
 
                             </div>
                         </div>
+
+
+
+
+                         <?php if ($is_paid): ?>
+                
+                        <div class="card">
+                            <div class="card-header bg-light d-flex align-items-center justify-content-between">
+                                <h6 class="mb-0 fw-semibold">
+                                    <i class="ti ti-file-type-pdf me-2 text-danger"></i>Invoice Document
+                                </h6>
+                                <?php if (!empty($inst['pdf_path'])): ?>
+                                <span class="badge bg-success-subtle text-success" style="font-size:.72rem;">
+                                    <i class="ti ti-circle-check me-1"></i>PDF Available
+                                </span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="card-body">
+                                <?php if (!empty($inst['pdf_path'])): ?>
+                                <?php
+                                    $pdf_abs   = __DIR__ . '/' . $inst['pdf_path'];
+                                    $pdf_exists = file_exists($pdf_abs);
+                                    $pdf_size   = $pdf_exists ? round(filesize($pdf_abs) / 1024, 1) . ' KB' : '';
+                                    $pdf_gen    = $pdf_exists ? date('d M Y, h:i A', filemtime($pdf_abs)) : '';
+                                ?>
+                                <div class="d-flex align-items-center gap-4 flex-wrap">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div style="width:48px;height:56px;background:#fee2e2;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                            <i class="ti ti-file-type-pdf text-danger" style="font-size:1.6rem;"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-semibold" style="font-size:.9rem;">
+                                                NCA-Invoice-<?php echo htmlspecialchars($inst['invoice_number']); ?>.pdf
+                                            </div>
+                                            <div class="text-muted" style="font-size:.76rem;">
+                                                <?php if ($pdf_exists): ?>
+                                                <?php echo $pdf_size; ?> &nbsp;&middot;&nbsp; Generated <?php echo $pdf_gen; ?>
+                                                <?php else: ?>
+                                                File stored in system
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php if (!empty($inst['payment_method'])): ?>
+                                            <div class="text-muted mt-1" style="font-size:.74rem;">
+                                                Paid via <strong><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $inst['payment_method']))); ?></strong>
+                                                <?php if (!empty($inst['payment_date'])): ?>
+                                                on <?php echo date('d M Y', strtotime($inst['payment_date'])); ?>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2 ms-auto flex-wrap">
+                                        <a href="installment_pdf_serve.php?id=<?php echo $inst_id; ?>&action=view"
+                                           target="_blank"
+                                           class="btn btn-outline-danger btn-sm">
+                                            <i class="ti ti-eye me-1"></i>View PDF
+                                        </a>
+                                        <a href="installment_pdf_serve.php?id=<?php echo $inst_id; ?>&action=download"
+                                           class="btn btn-danger btn-sm">
+                                            <i class="ti ti-download me-1"></i>Download PDF
+                                        </a>
+                                    </div>
+                                </div>
+                                <?php else: ?>
+                                <div class="text-center py-3 text-muted">
+                                    <i class="ti ti-file-off d-block mb-2" style="font-size:2rem;"></i>
+                                    <div style="font-size:.85rem;">No PDF stored yet for this installment.</div>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                  
+                <?php endif; ?>
                     </div>
 
                 </div><!-- /row -->
+
+               
 
             </div>
         </div>

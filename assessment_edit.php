@@ -7,10 +7,10 @@ if (@$_SESSION['user_type'] != '' && @$_SESSION['user_type'] != 1) {
 }
 
 $id = intval($_GET['id'] ?? 0);
-if ($id <= 0) { header('Location: assessment_new.php'); exit; }
+if ($id <= 0) { header('Location: assessment_list.php'); exit; }
 
 $row = mysqli_fetch_assoc(mysqli_query($connection, "SELECT * FROM `assessment` WHERE assessment_id = $id LIMIT 1"));
-if (!$row) { header('Location: assessment_new.php'); exit; }
+if (!$row) { header('Location: assessment_list.php'); exit; }
 
 $error = '';
 $status_map     = ['draft' => 0, 'active' => 1, 'inactive' => 2];
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
 
         if ($upd) {
-            header('Location: assessment_new.php?updated=1');
+            header('Location: assessment_list.php?updated=1');
             exit;
         } else {
             $error = 'Database error: ' . mysqli_error($connection);
@@ -130,7 +130,7 @@ $current_status = $status_reverse[intval($row['status'])] ?? 'draft';
                             <h4 class="mb-sm-0">Edit Assessment</h4>
                             <ol class="breadcrumb m-0">
                                 <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                                <li class="breadcrumb-item"><a href="assessment_new.php">Assessment</a></li>
+                                <li class="breadcrumb-item"><a href="assessment_list.php">Assessment</a></li>
                                 <li class="breadcrumb-item active">Edit</li>
                             </ol>
                         </div>
@@ -191,7 +191,7 @@ $current_status = $status_reverse[intval($row['status'])] ?? 'draft';
                                 <button type="submit" class="cf-btn-save">
                                     <i class="ti ti-device-floppy"></i> Save Changes
                                 </button>
-                                <a href="assessment_new.php" class="cf-btn-cancel">Cancel</a>
+                                <a href="assessment_list.php" class="cf-btn-cancel">Cancel</a>
                             </div>
                         </div>
                     </form>

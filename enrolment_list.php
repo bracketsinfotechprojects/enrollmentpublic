@@ -10,12 +10,37 @@ if (@$_SESSION['user_type'] != 1 && @$_SESSION['user_type'] != 2) {
     exit;
 }
 
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$where  = "WHERE 1=1";
+$search        = isset($_GET['search'])    ? trim($_GET['search'])    : '';
+$filter_status = isset($_GET['status'])    ? trim($_GET['status'])    : '';
+$date_from     = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
+$date_to       = isset($_GET['date_to'])   ? trim($_GET['date_to'])   : '';
+$date_single   = isset($_GET['date'])      ? trim($_GET['date'])      : '';
+
+$where = "WHERE 1=1";
+
 if ($search !== '') {
     $s = mysqli_real_escape_string($connection, $search);
     $where .= " AND (office_student_id LIKE '%$s%' OR given_name LIKE '%$s%' OR surname LIKE '%$s%' OR email_address LIKE '%$s%' OR mobile_num LIKE '%$s%' OR enquiry_id LIKE '%$s%')";
 }
+if ($filter_status !== '') {
+    $fs = mysqli_real_escape_string($connection, $filter_status);
+    $where .= " AND updated_status = '$fs'";
+}
+if ($date_single !== '' && $date_from === '' && $date_to === '') {
+    $ds = mysqli_real_escape_string($connection, $date_single);
+    $where .= " AND DATE(created_at) = '$ds'";
+} else {
+    if ($date_from !== '') {
+        $df = mysqli_real_escape_string($connection, $date_from);
+        $where .= " AND DATE(created_at) >= '$df'";
+    }
+    if ($date_to !== '') {
+        $dt = mysqli_real_escape_string($connection, $date_to);
+        $where .= " AND DATE(created_at) <= '$dt'";
+    }
+}
+
+$has_filters = ($search !== '' || $filter_status !== '' || $date_from !== '' || $date_to !== '' || $date_single !== '');
 
 $result = mysqli_query($connection, "SELECT * FROM enrolment_form_new $where ORDER BY created_at DESC");
 $rows   = [];
@@ -55,20 +80,92 @@ if ($result) {
                     </div>
                 </div>
 
-                <!-- Search + New -->
+                <!-- Filters -->
                 <div class="row mb-3">
                     <div class="col-12">
                         <div class="card">
                             <div class="card-body py-2">
-                                <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
-                                    <input type="text" name="search" class="form-control" style="max-width:320px;"
-                                           placeholder="Search by name, ID, email, mobile…"
-                                           value="<?php echo htmlspecialchars($search); ?>">
-                                    <button type="submit" class="btn btn-primary"><i class="ti ti-search me-1"></i>Search</button>
-                                    <?php if ($search !== ''): ?>
-                                    <a href="enrolment_list.php" class="btn btn-outline-secondary"><i class="ti ti-x me-1"></i>Clear</a>
+                                <form method="GET" id="filterForm">
+                                    <div class="d-flex gap-2 align-items-end flex-wrap">
+
+                                        <!-- Search -->
+                                        <div style="min-width:220px;flex:1 1 220px;">
+                                            <label class="form-label form-label-sm mb-1 text-muted">Search</label>
+                                            <input type="text" name="search" class="form-control form-control-sm"
+                                                   placeholder="Name, ID, email, mobile…"
+                                                   value="<?php echo htmlspecialchars($search); ?>">
+                                        </div>
+
+                                        <!-- Status -->
+                                        <div style="min-width:160px;flex:0 0 160px;">
+                                            <label class="form-label form-label-sm mb-1 text-muted">Status</label>
+                                            <select name="status" class="form-select form-select-sm">
+                                                <option value="">All Statuses</option>
+                                                <option value="pending"       <?php echo $filter_status==='pending'       ?'selected':''; ?>>Pending</option>
+                                                <option value="raise_query"   <?php echo $filter_status==='raise_query'   ?'selected':''; ?>>Query Raised</option>
+                                                <option value="resolve_query" <?php echo $filter_status==='resolve_query' ?'selected':''; ?>>Query Resolved</option>
+                                                <option value="completed"     <?php echo $filter_status==='completed'     ?'selected':''; ?>>Completed</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Single Date -->
+                                        <div style="min-width:150px;flex:0 0 150px;">
+                                            <label class="form-label form-label-sm mb-1 text-muted">Date</label>
+                                            <input type="date" name="date" class="form-control form-control-sm"
+                                                   value="<?php echo htmlspecialchars($date_single); ?>"
+                                                   title="Filter by exact date">
+                                        </div>
+
+                                        <!-- Date From -->
+                                        <div style="min-width:150px;flex:0 0 150px;">
+                                            <label class="form-label form-label-sm mb-1 text-muted">Date From</label>
+                                            <input type="date" name="date_from" class="form-control form-control-sm"
+                                                   value="<?php echo htmlspecialchars($date_from); ?>">
+                                        </div>
+
+                                        <!-- Date To -->
+                                        <div style="min-width:150px;flex:0 0 150px;">
+                                            <label class="form-label form-label-sm mb-1 text-muted">Date To</label>
+                                            <input type="date" name="date_to" class="form-control form-control-sm"
+                                                   value="<?php echo htmlspecialchars($date_to); ?>">
+                                        </div>
+
+                                        <!-- Actions -->
+                                        <div class="d-flex gap-2 align-items-end" style="flex-shrink:0;">
+                                            <button type="submit" class="btn btn-primary btn-sm">
+                                                <i class="ti ti-filter me-1"></i>Apply
+                                            </button>
+                                            <?php if ($has_filters): ?>
+                                            <a href="enrolment_list.php" class="btn btn-outline-secondary btn-sm">
+                                                <i class="ti ti-x me-1"></i>Clear
+                                            </a>
+                                            <?php endif; ?>
+                                            <a href="enrolment_form_new.php" class="btn btn-success btn-sm">
+                                                <i class="ti ti-plus me-1"></i>New Enrolment
+                                            </a>
+                                        </div>
+
+                                    </div>
+                                    <?php if ($has_filters): ?>
+                                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                                        <?php if ($search !== ''): ?>
+                                        <span class="badge bg-primary">Search: <?php echo htmlspecialchars($search); ?></span>
+                                        <?php endif; ?>
+                                        <?php if ($filter_status !== ''): ?>
+                                        <?php $slabels=['pending'=>'Pending','raise_query'=>'Query Raised','resolve_query'=>'Query Resolved','completed'=>'Completed']; ?>
+                                        <span class="badge bg-info text-dark">Status: <?php echo $slabels[$filter_status] ?? $filter_status; ?></span>
+                                        <?php endif; ?>
+                                        <?php if ($date_single !== ''): ?>
+                                        <span class="badge bg-secondary">Date: <?php echo date('d/m/Y', strtotime($date_single)); ?></span>
+                                        <?php endif; ?>
+                                        <?php if ($date_from !== ''): ?>
+                                        <span class="badge bg-secondary">From: <?php echo date('d/m/Y', strtotime($date_from)); ?></span>
+                                        <?php endif; ?>
+                                        <?php if ($date_to !== ''): ?>
+                                        <span class="badge bg-secondary">To: <?php echo date('d/m/Y', strtotime($date_to)); ?></span>
+                                        <?php endif; ?>
+                                    </div>
                                     <?php endif; ?>
-                                    <a href="enrolment_form_new.php" class="btn btn-success ms-auto"><i class="ti ti-plus me-1"></i>New Enrolment</a>
                                 </form>
                             </div>
                         </div>
@@ -156,7 +253,7 @@ if ($result) {
                                             <tr>
                                                 <td colspan="10" class="text-center py-4 text-muted">
                                                     <i class="ti ti-file-off fs-3 d-block mb-2"></i>
-                                                    No enrolments found<?php echo $search ? ' for "' . htmlspecialchars($search) . '"' : ''; ?>.
+                                                    No enrolments found<?php echo $has_filters ? ' matching the applied filters' : ''; ?>.
                                                 </td>
                                             </tr>
                                             <?php endif; ?>

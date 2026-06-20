@@ -96,7 +96,7 @@ $student_name = mysqli_real_escape_string($connection, trim($enr['given_name'] .
 $student_id   = mysqli_real_escape_string($connection, $enr['office_student_id'] ?? '');
 $email        = mysqli_real_escape_string($connection, $enr['email_address'] ?? '');
 $created_by   = intval($_SESSION['user_id']);
-$inv_number   = 'INV-' . strtoupper(substr(md5(uniqid('', true)), 0, 8));
+$inv_number   = 'NCA-' . strtoupper(substr(md5(uniqid('', true)), 0, 8));
 
 // Insert invoice header
 $suid_val = $student_user_id > 0 ? $student_user_id : 'NULL';

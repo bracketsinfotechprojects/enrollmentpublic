@@ -2372,18 +2372,24 @@ if (@$_POST['formName'] == 'save_enrolment_form_new') {
     $username = mysqli_real_escape_string($connection, @$_SESSION['user_name'] ?? '');
     $user_type = mysqli_real_escape_string($connection, $user_type);
 
-    // Photo upload
+    // Document upload (saved as [{name, file}])
     $uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
     if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
     $photo_paths = '[]';
     if (!empty($_FILES['image']['name'][0])) {
+        $doc_names_raw = isset($_POST['doc_names']) ? json_decode($_POST['doc_names'], true) : [];
+        if (!is_array($doc_names_raw)) $doc_names_raw = [];
         $uploaded = array();
         foreach ($_FILES['image']['name'] as $k => $fileName) {
             $tmp = $_FILES['image']['tmp_name'][$k];
             if (!is_uploaded_file($tmp)) continue;
-            $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+            $ext   = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
             $uname = rand(1000, 999999) . '_' . time() . '.' . $ext;
-            if (move_uploaded_file($tmp, $uploadDir . $uname)) $uploaded[] = $uname;
+            if (move_uploaded_file($tmp, $uploadDir . $uname)) {
+                $label = isset($doc_names_raw[$k]) && trim($doc_names_raw[$k]) !== ''
+                    ? trim($doc_names_raw[$k]) : $fileName;
+                $uploaded[] = ['name' => $label, 'file' => $uname];
+            }
         }
         $photo_paths = json_encode($uploaded);
     }
@@ -2602,18 +2608,24 @@ if (@$_POST['formName'] == 'update_enrolment_form_new') {
         exit;
     }
 
-    // Photo upload — append new photos if any
+    // Document upload — append new docs with names if any (saved as [{name, file}])
     $photo_paths_upd = null;
     $uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
     if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
     if (!empty($_FILES['image']['name'][0])) {
+        $doc_names_raw = isset($_POST['doc_names']) ? json_decode($_POST['doc_names'], true) : [];
+        if (!is_array($doc_names_raw)) $doc_names_raw = [];
         $uploaded = array();
         foreach ($_FILES['image']['name'] as $k => $fileName) {
             $tmp = $_FILES['image']['tmp_name'][$k];
             if (!is_uploaded_file($tmp)) continue;
-            $ext  = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+            $ext   = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
             $uname = rand(1000, 999999) . '_' . time() . '.' . $ext;
-            if (move_uploaded_file($tmp, $uploadDir . $uname)) $uploaded[] = $uname;
+            if (move_uploaded_file($tmp, $uploadDir . $uname)) {
+                $label = isset($doc_names_raw[$k]) && trim($doc_names_raw[$k]) !== ''
+                    ? trim($doc_names_raw[$k]) : $fileName;
+                $uploaded[] = ['name' => $label, 'file' => $uname];
+            }
         }
         if (!empty($uploaded)) $photo_paths_upd = mysqli_real_escape_string($connection, json_encode($uploaded));
     }
@@ -4976,6 +4988,11 @@ if(@$_POST['formName']=='fetchEnquiryList'){
         }
         $status_tip = htmlspecialchars($status_label, ENT_QUOTES, 'UTF-8');
         $status_cell_html = '<span class="course-tooltip" title="' . $status_tip . '"><span class="badge bg-' . $status_class . ' enq-status-badge">' . htmlspecialchars($status_label, ENT_QUOTES, 'UTF-8') . '</span></span>';
+        $lln_esc_chk = mysqli_real_escape_string($connection, (string)($r['st_enquiry_id'] ?? ''));
+        $lln_done = $lln_esc_chk !== '' && mysqli_fetch_row(mysqli_query($connection,
+            "SELECT 1 FROM counseling_details WHERE st_enquiry_id='$lln_esc_chk' AND counsil_enquiry_status=0 LIMIT 1"
+        ));
+
         $outcome_html = '<span class="badge bg-secondary">No follow-up yet</span>';
         $use_counselling_outcome = ($couns_outcome !== '' && ($follow_up_outcome === '' || $couns_ts > $follow_ts));
         if ($use_counselling_outcome) {
@@ -5010,16 +5027,15 @@ if(@$_POST['formName']=='fetchEnquiryList'){
             $next_ts = strtotime($next_fup);
             $outcome_html = '<span class="text-muted">' . date('d/m/Y', $next_ts) . '</span>';
         }
+        if ($lln_done) {
+            $outcome_html = '<span class="badge bg-info">Proceed for LLN</span>';
+        }
         $eq_enc = base64_encode($r['st_id']);
         $st_id = (int)$r['st_id'];
         $cb_html = $view_enq_list_admin ? '<input type="checkbox" class="enq-row-cb form-check-input" value="'.$st_id.'">' : '';
         $action_html = '<div class="d-inline-flex align-items-center gap-1 flex-wrap view-enq-actions">'
             .'<a href="student_enquiry.php?eq='.$eq_enc.'&amp;view=1" class="btn btn-sm btn-outline-primary view-enq-btn" title="View enquiry" aria-label="View enquiry"><i class="ti ti-eye"></i></a>';
         if($view_enq_list_admin){
-            $lln_esc  = mysqli_real_escape_string($connection, (string)($r['st_enquiry_id'] ?? ''));
-            $lln_done = $lln_esc !== '' && mysqli_fetch_row(mysqli_query($connection,
-                "SELECT 1 FROM counseling_details WHERE st_enquiry_id='$lln_esc' AND counsil_enquiry_status=0 LIMIT 1"
-            ));
             $lln_btn = $lln_done
                 ? '<button type="button" class="btn btn-secondary btn-sm" disabled title="LLN already processed">Proceed to LLN</button>'
                 : '<button type="button" class="btn btn-outline-secondary btn-sm btn-enq-lln" data-st-id="'.$st_id.'" title="Process to LLN" aria-label="Process to LLN">Process to LLN</button>';
@@ -8360,7 +8376,7 @@ if (@$_POST['formName'] === 'create_invoice') {
     $student_id   = mysqli_real_escape_string($connection, $enr['office_student_id']);
     $email        = mysqli_real_escape_string($connection, $enr['email_address']);
     $created_by   = intval($_SESSION['user_id'] ?? 0);
-    $inv_number   = 'INV-' . strtoupper(substr(md5(uniqid()), 0, 8));
+    $inv_number   = 'NCA-' . strtoupper(substr(md5(uniqid()), 0, 8));
 
     // Insert invoice header
     $ok = mysqli_query($connection,

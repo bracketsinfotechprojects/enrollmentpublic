@@ -200,13 +200,24 @@ $badge = $status_map[$inv['status']] ?? 'secondary';
                         </div>
                         <div class="d-flex gap-2 flex-wrap no-print">
                             <?php if (!$is_paid): ?>
-                            <button class="btn btn-sm btn-success" onclick="markInstallmentPaid(<?php echo intval($inst['id']); ?>, this)">
+                            <button class="btn btn-sm btn-success">
                                 <i class="ti ti-check me-1"></i>Mark Paid
                             </button>
                             <?php else: ?>
                             <button class="btn btn-sm btn-success" disabled>
                                 <i class="ti ti-circle-check me-1"></i>Paid
                             </button>
+                            <?php
+                            $pdf_href = (!empty($inst['pdf_path']) && file_exists(__DIR__ . '/' . $inst['pdf_path']))
+                                ? htmlspecialchars($inst['pdf_path'])
+                                : 'installment_pdf_serve.php?id=' . intval($inst['id']) . '&action=view';
+                            ?>
+                            <a href="<?php echo $pdf_href; ?>"
+                               target="_blank"
+                               class="btn btn-sm btn-outline-danger"
+                               title="View stored invoice PDF">
+                                <i class="ti ti-file-type-pdf me-1"></i>View PDF
+                            </a>
                             <?php endif; ?>
                             <a href="installment_view.php?id=<?php echo intval($inst['id']); ?>" class="btn btn-sm btn-outline-primary">
                                 <i class="ti ti-eye me-1"></i>View
@@ -486,6 +497,19 @@ function payOffline(installmentId) {
     new bootstrap.Modal(document.getElementById('payOfflineModal')).show();
 }
 
+// Show post-reload feedback toast
+(function(){
+    const msg = sessionStorage.getItem('_inv_toast');
+    if (!msg) return;
+    sessionStorage.removeItem('_inv_toast');
+    const isOk = msg.startsWith('Payment recorded and invoice');
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13.5px;font-weight:500;box-shadow:0 4px 18px rgba(0,0,0,.15);max-width:360px;display:flex;align-items:center;gap:10px;color:#fff;background:' + (isOk ? '#059669' : '#d97706');
+    div.innerHTML = '<i class="ti ' + (isOk ? 'ti-circle-check' : 'ti-alert-triangle') + '" style="font-size:18px;flex-shrink:0"></i><span>' + msg + '</span>';
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+})();
+
 function submitOfflinePayment() {
     const method       = document.getElementById('offlinePaymentMethod').value.trim();
     const date         = document.getElementById('offlinePaymentDate').value.trim();
@@ -523,6 +547,13 @@ function submitOfflinePayment() {
         if (data.success) {
             const mi = bootstrap.Modal.getInstance(document.getElementById('payOfflineModal'));
             if (mi) mi.hide();
+            if (data.email_sent) {
+                sessionStorage.setItem('_inv_toast', 'Payment recorded and invoice PDF emailed to student.');
+            } else if (data.pdf_generated) {
+                sessionStorage.setItem('_inv_toast', 'Payment recorded. PDF saved but email could not be sent.');
+            } else {
+                sessionStorage.setItem('_inv_toast', 'Payment recorded.' + (data.pdf_error ? ' PDF: ' + data.pdf_error : ''));
+            }
             location.reload();
         } else {
             errEl.textContent = data.message || 'Failed to record offline payment.';

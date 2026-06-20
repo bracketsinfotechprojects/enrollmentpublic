@@ -55,3 +55,43 @@ function send_mail($to, $subject, $body, array $context = array()) {
     }
 }
 }
+
+/**
+ * Send HTML email with a single PDF attachment via Symfony Mailer.
+ *
+ * @param string $to            Recipient address
+ * @param string $subject
+ * @param string $body          HTML body
+ * @param string $attachment    Absolute filesystem path to the PDF file
+ * @param string $attach_name   Filename the recipient sees (e.g. "Invoice-NCA-001.pdf")
+ * @param array  $context       Optional log context (same keys as send_mail)
+ */
+if (!function_exists('send_mail_with_attachment')) {
+function send_mail_with_attachment(string $to, string $subject, string $body, string $attachment, string $attach_name, array $context = []): void
+{
+    global $connection;
+
+    $conn = (isset($connection) && $connection instanceof mysqli) ? $connection : null;
+
+    $transport = Transport::fromDsn('smtp://noreply%40nationalcollege.edu.au:Noreply%402026mail@smtp.hostinger.com:465?encryption=ssl');
+    $mailer    = new Mailer($transport);
+    $email     = (new Email())
+        ->from('National College of Australia <noreply@nationalcollege.edu.au>')
+        ->to($to)
+        ->subject($subject)
+        ->html($body)
+        ->attachFromPath($attachment, $attach_name, 'application/pdf');
+
+    try {
+        $mailer->send($email);
+        if ($conn) {
+            crm_email_log_record($conn, $to, $subject, $body, 'sent', null, $context);
+        }
+    } catch (Throwable $e) {
+        if ($conn) {
+            crm_email_log_record($conn, $to, $subject, $body, 'failed', $e->getMessage(), $context);
+        }
+        throw $e;
+    }
+}
+}

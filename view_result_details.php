@@ -36,15 +36,14 @@ if($submission_id > 0){
             a.assessment_name,
             a.marks as assessment_total_marks,
             a.duration,
-            se.st_given_name,
-            se.st_surname,
-            se.st_unique_id,
-            efn.given_name as efn_given_name,
-            efn.surname as efn_surname
+            enq.st_name,
+            enq.st_surname,
+            enq.st_email,
+            enq.st_phno
             FROM assessment_submissions s
             INNER JOIN assessment a ON s.assessment_id = a.assessment_id
-            LEFT JOIN student_enrolments se ON s.student_enrol_id = se.st_enrol_id
-            LEFT JOIN enrolment_form_new efn ON efn.student_user_id = s.student_enrol_id
+            LEFT JOIN counseling_details cd ON cd.student_user_id = s.student_enrol_id
+            LEFT JOIN student_enquiry enq ON enq.st_enquiry_id = cd.st_enquiry_id
             WHERE s.submission_id = $submission_id
             LIMIT 1");
     }
@@ -58,8 +57,7 @@ if($submission_id > 0){
 
     $studentName = '';
     if(!$is_student){
-        $studentName = trim(($submission['efn_given_name'] ?? '') . ' ' . ($submission['efn_surname'] ?? ''));
-        if(!$studentName) $studentName = trim(($submission['st_given_name'] ?? '') . ' ' . ($submission['st_surname'] ?? ''));
+        $studentName = trim(($submission['st_name'] ?? '') . ' ' . ($submission['st_surname'] ?? ''));
     }
     
     
@@ -340,7 +338,7 @@ function getOptionLabel($num) {
                                                 <div class="d-flex justify-content-between align-items-start">
                                                     <div>
                                                         <span class="badge bg-secondary me-2"><?php echo getQuestionTypeName($qt); ?></span>
-                                                        <strong class=""><?php echo htmlspecialchars($answer['question_text']); ?></strong>
+                                                        <strong class=""><?php echo $answer['question_text']; ?></strong>
                                                     </div>
                                                     <span class="badge <?php echo $isCorrect ? 'bg-success' : 'bg-danger'; ?>">
                                                         <?php echo $obtMarks; ?>/<?php echo $qMarks; ?> marks

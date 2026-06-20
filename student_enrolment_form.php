@@ -381,6 +381,7 @@ $courses = mysqli_query($connection, "SELECT * FROM courses WHERE course_status 
                                     <option value="<?php echo (int)$c['course_id']; ?>"><?php echo htmlspecialchars($c['course_sname'] . ' - ' . $c['course_name']); ?></option>
                                     <?php endwhile; ?>
                                 </select>
+                                <div id="courses_error" class="text-danger small mt-1" style="display:none;">Please select at least one qualification.</div>
                             </div>
                         </div>
                     </div>
@@ -388,16 +389,16 @@ $courses = mysqli_query($connection, "SELECT * FROM courses WHERE course_status 
                     <!-- QUALIFICATIONS COMPLETED -->
                     <div class="section-header">Have you successfully completed any of the following qualifications? (Tick most relevant)</div>
                     <div class="section-body">
-                        <div class="row mb-2">
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_cert1" value="1"><label class="form-check-label">Certificate I</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_cert4" value="1"><label class="form-check-label">Certificate IV (or advanced certificate/technician)</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_bachelor" value="1"><label class="form-check-label">Bachelor's degree or Higher</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_cert2" value="1"><label class="form-check-label">Certificate II</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_diploma" value="1"><label class="form-check-label">Diploma (or associate diploma)</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_other" value="1"><label class="form-check-label">Other education (including overseas qualifications not listed above)</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_cert3" value="1"><label class="form-check-label">Certificate III (Trade Cert)</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_adv_diploma" value="1"><label class="form-check-label">Advanced Diploma/Associate Degree</label></div></div>
-                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_none" value="1"><label class="form-check-label">None</label></div></div>
+                        <div class="row mb-2" id="qual_checkboxes_group">
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_cert1" value="1"><label class="form-check-label">Certificate I</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_cert4" value="1"><label class="form-check-label">Certificate IV (or advanced certificate/technician)</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_bachelor" value="1"><label class="form-check-label">Bachelor's degree or Higher</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_cert2" value="1"><label class="form-check-label">Certificate II</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_diploma" value="1"><label class="form-check-label">Diploma (or associate diploma)</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_other" value="1"><label class="form-check-label">Other education (including overseas qualifications not listed above)</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_cert3" value="1"><label class="form-check-label">Certificate III (Trade Cert)</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input qual-option" type="checkbox" name="qual_adv_diploma" value="1"><label class="form-check-label">Advanced Diploma/Associate Degree</label></div></div>
+                            <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="qual_none" id="qual_none" value="1"><label class="form-check-label">None</label></div></div>
                         </div>
                         <div class="check-row">
                             <label><input type="radio" name="qualification_attained" value="Australia"> Attained in Australia</label>
@@ -603,39 +604,45 @@ $courses = mysqli_query($connection, "SELECT * FROM courses WHERE course_status 
                         </div>
                     </div>
 
-                    <!-- PHOTO UPLOAD -->
+                    <!-- DOCUMENT UPLOAD -->
                     <div class="card mb-3">
                         <div class="card-body">
-                            <div class="col-md-6">
-                                <label class="form-label">Photo Upload</label>
-                                <?php
-                                $existing_photos = [];
-                                if ($edit_mode && !empty($ef['photo_paths'])) {
-                                    $decoded = json_decode($ef['photo_paths'], true);
-                                    if (is_array($decoded)) $existing_photos = $decoded;
-                                }
-                                ?>
-                                <?php if (!empty($existing_photos)): ?>
-                                <div class="mb-2">
-                                    <small class="text-muted d-block mb-1">Previously uploaded photos:</small>
-                                    <div class="d-flex flex-wrap gap-2" id="existing_photos_preview">
-                                        <?php foreach ($existing_photos as $photo): ?>
-                                        <div class="position-relative" style="width:90px;">
-                                            <img src="uploads/<?php echo htmlspecialchars($photo); ?>"
-                                                 alt="Photo"
-                                                 class="img-thumbnail"
-                                                 style="width:90px;height:90px;object-fit:cover;"
-                                                 onerror="this.closest('.position-relative').style.display='none'">
-                                        </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                                <?php endif; ?>
-                                <input type="file" class="form-control" id="photo_upload" name="photo_upload[]" accept="image/*" multiple>
-                                <?php if (!empty($existing_photos)): ?>
-                                <small class="text-muted">Upload new photos to replace the existing ones, or leave empty to keep them.</small>
-                                <?php endif; ?>
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <label class="form-label mb-0 fw-semibold">Document Upload</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="add_doc_btn">
+                                    <i class="ti ti-plus me-1"></i>Add Document
+                                </button>
                             </div>
+                            <?php
+                            $existing_photos = [];
+                            if ($edit_mode && !empty($ef['photo_paths'])) {
+                                $decoded = json_decode($ef['photo_paths'], true);
+                                if (is_array($decoded)) $existing_photos = $decoded;
+                            }
+                            ?>
+                            <?php if (!empty($existing_photos)): ?>
+                            <div class="mb-3">
+                                <small class="text-muted d-block mb-1">Previously uploaded documents:</small>
+                                <div class="d-flex flex-wrap gap-2" id="existing_photos_preview">
+                                    <?php foreach ($existing_photos as $photo):
+                                        $doc_label = is_array($photo)
+                                            ? ($photo['name'] ?? basename($photo['file'] ?? ''))
+                                            : basename($photo);
+                                        $doc_file = is_array($photo) ? ($photo['file'] ?? $photo) : $photo;
+                                    ?>
+                                    <div class="d-flex align-items-center gap-2 border rounded px-2 py-1" style="font-size:.82rem;max-width:260px;">
+                                        <i class="ti ti-file text-primary flex-shrink-0"></i>
+                                        <a href="uploads/<?php echo htmlspecialchars($doc_file); ?>" target="_blank" class="text-truncate text-decoration-none">
+                                            <?php echo htmlspecialchars($doc_label); ?>
+                                        </a>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <div id="doc_upload_list"></div>
+                            <small class="text-muted">Accepted: PDF, Word, Excel, PowerPoint, images</small>
                         </div>
                     </div>
 
@@ -714,6 +721,12 @@ $(function(){
     if (existingData.additional_support == 2) $('.additional_support_specify_wrap').show();
     <?php endif; ?>
 
+    $('#courses').on('change', function(){
+        if ($('#courses').val() && $('#courses').val().length > 0) {
+            $('#courses_error').hide();
+        }
+    });
+
     $('.postal_same').on('change', function(){
         $('.postal_address_field').toggle($(this).val() === '0');
     });
@@ -790,6 +803,14 @@ $(function(){
             return;
         }
 
+        var selectedCourses = $('#courses').val();
+        if (!selectedCourses || selectedCourses.length === 0) {
+            $('#courses_error').show();
+            $('#courses').closest('.col-12')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+        $('#courses_error').hide();
+
         var sigFile = $('#signature_image')[0].files[0];
 
         $btn.prop('disabled', true).text('Submitting…');
@@ -802,7 +823,7 @@ $(function(){
             var details = {};
             $form.find('input, select, textarea').each(function(){
                 var $el = $(this), name = $el.attr('name');
-                if (!name || name === 'photo_upload[]' || name === 'signature_image') return;
+                if (!name || name === 'signature_image') return;
                 if ($el.attr('type') === 'file') return;
                 if ($el.attr('type') === 'radio'){
                     if ($el.is(':checked')) details[name] = $el.val();
@@ -821,8 +842,17 @@ $(function(){
             details.courses = $('#courses').val() || [];
             formData.append('details', JSON.stringify(details));
 
-            var files = $('#photo_upload')[0].files;
-            for (var i = 0; i < files.length; i++) formData.append('image[]', files[i]);
+            var docNames = [];
+            $('#doc_upload_list .doc-slot').each(function() {
+                var $slot = $(this);
+                var docName = $slot.find('[data-doc-name]').val().trim();
+                var fileInput = $slot.find('input[type="file"]')[0];
+                if (fileInput && fileInput.files[0]) {
+                    formData.append('image[]', fileInput.files[0]);
+                    docNames.push(docName || fileInput.files[0].name);
+                }
+            });
+            formData.append('doc_names', JSON.stringify(docNames));
 
             if (sigFile) formData.append('signature_image', sigFile);
 
@@ -863,6 +893,53 @@ $(function(){
             $btn.prop('disabled', false).text(isEditMode ? 'Update Enrolment Form' : 'Submit Enrolment Form');
         });
     });
+});
+
+// ── Qualification "None" toggle ───────────────────────────────────────────
+$('#qual_none').on('change', function() {
+    if ($(this).is(':checked')) {
+        $('.qual-option').prop('checked', false).prop('disabled', true);
+    } else {
+        $('.qual-option').prop('disabled', false);
+    }
+});
+
+$('.qual-option').on('change', function() {
+    if ($(this).is(':checked')) {
+        $('#qual_none').prop('checked', false);
+    }
+});
+
+// On page load: if None is already checked (edit mode), disable the rest
+if ($('#qual_none').is(':checked')) {
+    $('.qual-option').prop('checked', false).prop('disabled', true);
+}
+
+// ── Document upload slots ──────────────────────────────────────────────────
+var docSlotCount = 0;
+
+function addDocSlot() {
+    docSlotCount++;
+    var id = 'doc_slot_' + docSlotCount;
+    var html =
+        '<div class="d-flex align-items-center gap-2 mb-2 doc-slot" id="' + id + '">' +
+            '<div class="flex-grow-1">' +
+                '<input type="text" class="form-control form-control-sm mb-1" data-doc-name="true" placeholder="Document name (e.g. Passport, ID Proof…)">' +
+                '<input type="file" class="form-control form-control-sm" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp">' +
+            '</div>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger align-self-start mt-1" onclick="removeDocSlot(\'' + id + '\')" title="Remove">' +
+                '<i class="ti ti-x"></i>' +
+            '</button>' +
+        '</div>';
+    $('#doc_upload_list').append(html);
+}
+
+function removeDocSlot(id) {
+    $('#' + id).remove();
+}
+
+$('#add_doc_btn').on('click', function() {
+    addDocSlot();
 });
 </script>
 </body>

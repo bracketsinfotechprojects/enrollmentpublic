@@ -139,7 +139,114 @@ if ($action === 'pay_offline') {
             mysqli_query($connection, "UPDATE enrolment_invoices SET status='paid' WHERE id=$real_inv_id");
         }
     }
-    echo json_encode(['success' => true]);
+
+    // ── Ensure pdf_path column exists ─────────────────────────────────────────
+    $chk_col = mysqli_query($connection, "SHOW COLUMNS FROM `enrolment_invoice_installments` LIKE 'pdf_path'");
+    if ($chk_col && mysqli_num_rows($chk_col) === 0) {
+        mysqli_query($connection, "ALTER TABLE `enrolment_invoice_installments` ADD COLUMN `pdf_path` VARCHAR(255) DEFAULT NULL");
+    }
+
+    // ── Generate PDF, store file path, send email ────────────────────────────
+    $pdf_generated = false;
+    $email_sent    = false;
+    $pdf_error     = '';
+
+    try {
+        require_once __DIR__ . '/includes/invoice_pdf_helper.php';
+        require_once __DIR__ . '/includes/mail_function.php';
+
+        $pdfResult = generate_installment_pdf_file($inst_id, $connection);
+
+        if ($pdfResult['success']) {
+            $pdf_generated = true;
+            $rel_esc = mysqli_real_escape_string($connection, $pdfResult['rel_path']);
+            mysqli_query($connection,
+                "UPDATE enrolment_invoice_installments SET pdf_path='$rel_esc' WHERE id=$inst_id"
+            );
+
+            // ── Send email with PDF attachment ────────────────────────────────
+            $student_email = trim($pdfResult['email'] ?? '');
+            if ($student_email && filter_var($student_email, FILTER_VALIDATE_EMAIL)) {
+                $student_name = $pdfResult['student']   ?: 'Student';
+                $inv_number   = $pdfResult['inv_number']?: '';
+                $paid_total   = '$' . number_format($pdfResult['total'], 2);
+                $pay_method   = ucfirst(str_replace('_', ' ', $pdfResult['method'] ?: 'offline'));
+                $pay_date     = $pdfResult['pay_date'] ? date('d M Y', strtotime($pdfResult['pay_date'])) : date('d M Y');
+                $course_lbl   = $pdfResult['course'] ?: '—';
+                $year         = date('Y');
+
+                $email_subject = "Payment Confirmation – Invoice $inv_number";
+                $email_body = '<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+body{margin:0;padding:0;background:#f2f5fa;font-family:Arial,sans-serif;color:#1e2d45}
+.wrap{max-width:600px;margin:30px auto;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(26,43,74,.10)}
+.hdr{background:linear-gradient(135deg,#1a2b4a 0%,#0d3d54 55%,#005f56 100%);padding:28px 36px}
+.hdr-name{font-size:20px;font-weight:700;color:#fff;letter-spacing:.2px}
+.hdr-sub{font-size:12px;color:rgba(255,255,255,.55);margin-top:4px}
+.body{padding:32px 36px}
+.greeting{font-size:16px;font-weight:600;color:#1a2b4a;margin-bottom:8px}
+.intro{font-size:13.5px;color:#374662;line-height:1.6;margin-bottom:22px}
+.confirm-badge{display:inline-block;background:#d1fae5;color:#065f46;font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;margin-bottom:20px;letter-spacing:.3px}
+.detail-table{width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;margin-bottom:22px}
+.detail-table td{padding:11px 14px;font-size:13px;border-bottom:1px solid #e8ecf4}
+.detail-table tr:last-child td{border-bottom:none}
+.detail-table .lbl{color:#6b7a95;width:42%}
+.detail-table .val{font-weight:600;color:#1e2d45}
+.amount{color:#059669;font-size:16px;font-weight:700}
+.callout{background:#e6f4f3;border-left:4px solid #00857a;border-radius:4px;padding:13px 16px;font-size:12.5px;color:#1a5c58;margin-bottom:24px;line-height:1.6}
+.footer-strip{background:#f8fafc;border-top:1px solid #dde3ed;padding:18px 36px;font-size:11px;color:#9ba3b8;text-align:center;line-height:1.7}
+</style></head><body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-name">National College Australia</div>
+    <div class="hdr-sub">RTO ID: 91000 &nbsp;&middot;&nbsp; ABN: 78 097 149 598</div>
+  </div>
+  <div class="body">
+    <div class="confirm-badge">&#10003; Payment Confirmed</div>
+    <div class="greeting">Dear ' . htmlspecialchars($student_name) . ',</div>
+    <p class="intro">Thank you for your payment. Your tax invoice is attached to this email as a PDF. Please keep a copy for your records.</p>
+    <table class="detail-table">
+      <tr><td class="lbl">Invoice Number</td><td class="val">' . htmlspecialchars($inv_number) . '</td></tr>
+      <tr><td class="lbl">Course</td><td class="val">' . htmlspecialchars($course_lbl) . '</td></tr>
+      <tr><td class="lbl">Amount Paid (inc. GST)</td><td class="val"><span class="amount">' . $paid_total . ' AUD</span></td></tr>
+      <tr><td class="lbl">Payment Method</td><td class="val">' . htmlspecialchars($pay_method) . '</td></tr>
+      <tr><td class="lbl">Payment Date</td><td class="val">' . htmlspecialchars($pay_date) . '</td></tr>
+    </table>
+    <div class="callout">
+      &#128196;&nbsp; Your tax invoice (<strong>' . htmlspecialchars($inv_number) . '.pdf</strong>) is attached to this email. If you have any questions, please contact <a href="mailto:accounts@nationalcollege.edu.au" style="color:#00857a">accounts@nationalcollege.edu.au</a> or call <strong>08 7119 6196</strong>.
+    </div>
+  </div>
+  <div class="footer-strip">
+    &copy; ' . $year . ' National College Australia &nbsp;&middot;&nbsp; RTO: 91000 &nbsp;&middot;&nbsp; ABN: 78 097 149 598<br>
+    Level 1/118 King William Street, Adelaide SA 5000
+  </div>
+</div>
+</body></html>';
+
+                $attach_name = 'NCA-Invoice-' . preg_replace('/[^A-Za-z0-9\-]/', '', $inv_number) . '.pdf';
+                send_mail_with_attachment(
+                    $student_email,
+                    $email_subject,
+                    $email_body,
+                    $pdfResult['file_path'],
+                    $attach_name,
+                    ['email_category' => 'invoice_payment_confirmation']
+                );
+                $email_sent = true;
+            }
+        } else {
+            $pdf_error = $pdfResult['error'] ?? 'PDF generation failed.';
+        }
+    } catch (\Throwable $e) {
+        $pdf_error = $e->getMessage();
+    }
+
+    echo json_encode([
+        'success'       => true,
+        'pdf_generated' => $pdf_generated,
+        'email_sent'    => $email_sent,
+        'pdf_error'     => $pdf_error,
+    ]);
     exit;
 }
 

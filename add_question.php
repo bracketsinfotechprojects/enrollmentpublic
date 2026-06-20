@@ -11,7 +11,7 @@ if($assessment_id > 0){
     $qr = mysqli_query($connection, "SELECT * FROM assessment_questions WHERE assessment_id = $assessment_id ORDER BY question_id ASC");
     if($qr) while($row = mysqli_fetch_assoc($qr)) $questions[] = $row;
 }
-if(!$assessment){ header("Location: assessment_new.php"); exit; }
+if(!$assessment){ header("Location: assessment_list.php"); exit; }
 // Auto-add question_image column if it doesn't exist yet
 $col_chk = mysqli_query($connection, "SHOW COLUMNS FROM assessment_questions LIKE 'question_image'");
 if(!$col_chk || mysqli_num_rows($col_chk) === 0){
@@ -53,6 +53,7 @@ $allTypes = [
 <link rel="stylesheet" href="assets/css/icons.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 <style>
 :root{
   --bg:#0f1117;--surface:#181b23;--surface2:#1e2230;--surface3:#252b3b;
@@ -177,13 +178,24 @@ html,body{height:100%;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif
 .toast.error{border-left:3px solid var(--red)}
 @keyframes toastIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* ── Quill editor overrides ── */
+.ql-toolbar.ql-snow{border-radius:7px 7px 0 0;background:#1e2230;border-color:#2a2f3e !important;}
+.ql-container.ql-snow{border-radius:0 0 7px 7px;background:#ffffff;border-color:#2a2f3e !important;min-height:110px;}
+.ql-editor{min-height:110px;font-size:14px;color:#111;}
+.ql-toolbar.ql-snow .ql-stroke{stroke:#9ba3b8;}
+.ql-toolbar.ql-snow .ql-fill{fill:#9ba3b8;}
+.ql-toolbar.ql-snow .ql-picker{color:#9ba3b8;}
+.ql-toolbar.ql-snow button:hover .ql-stroke,.ql-toolbar.ql-snow button.ql-active .ql-stroke{stroke:#4f6ef7;}
+.ql-toolbar.ql-snow button:hover .ql-fill,.ql-toolbar.ql-snow button.ql-active .ql-fill{fill:#4f6ef7;}
+.ql-toolbar.ql-snow .ql-picker-label:hover,.ql-toolbar.ql-snow .ql-picker-item:hover{color:#4f6ef7;}
+.ql-snow .ql-picker-options{background:#1e2230;border-color:#2a2f3e !important;color:#e8eaf0;}
 </style>
 </head>
 <body>
 
 <!-- Top bar -->
 <div class="topbar">
-  <a href="assessment_new.php" class="topbar-back"><i class="ti ti-arrow-left"></i> Assessments</a>
+  <a href="assessment_list.php" class="topbar-back"><i class="ti ti-arrow-left"></i> Assessments</a>
   <span class="topbar-name">
     <?php echo htmlspecialchars($assessment['assessment_name']); ?>
     <span class="topbar-badge"><?php echo htmlspecialchars($assessment['assessment_unique_id']); ?></span>
@@ -203,7 +215,7 @@ html,body{height:100%;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif
     <div class="palette-body" id="paletteBody">
 
       <div class="palette-group">Question Types</div>
-      <?php foreach($allTypes as $tid => $t): if($t[3]!=='quiz') continue; ?>
+      <?php foreach($allTypes as $tid => $t): if($t[3]!=='quiz') continue; if(in_array($tid,[1,3,4,5])) continue; ?>
       <div class="palette-item" draggable="true" data-type="<?php echo $tid; ?>">
         <div class="p-icon"><i class="ti <?php echo $t[1]; ?>" style="color:<?php echo $t[2]; ?>"></i></div>
         <?php echo $t[0]; ?>
@@ -251,7 +263,7 @@ html,body{height:100%;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif
         <div class="q-card-head">
           <div class="q-num"><?php echo $qi+1; ?></div>
           <span class="q-badge" style="background:<?php echo $tdef[2]; ?>"><?php echo $tdef[0]; ?></span>
-          <span class="q-snippet"><?php echo htmlspecialchars(mb_strimwidth($q['question_text'],0,60,'…')); ?></span>
+          <span class="q-snippet"><?php echo mb_strimwidth($q['question_text'],0,80,'…'); ?></span>
           <div class="q-actions" onclick="event.stopPropagation()">
             <button class="q-btn" onclick="selectCard(<?php echo $q['question_id']; ?>)" title="Edit"><i class="ti ti-pencil"></i></button>
             <button class="q-btn del" onclick="deleteQ(<?php echo $q['question_id']; ?>)" title="Delete"><i class="ti ti-trash"></i></button>
@@ -284,6 +296,7 @@ html,body{height:100%;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif
 </div>
 <div class="toast-wrap" id="toastWrap"></div>
 
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 var assessmentId         = <?php echo $assessment_id; ?>;
 var assessmentTotalMarks = <?php echo intval($assessment['marks']??0); ?>;
@@ -407,9 +420,11 @@ function buildForm(type, qdata){
   var h='';
 
   // ── Question / Label text ──
+  var _qtextHtml = isEdit ? (qdata.question_text || '') : '';
   h+=`<div class="pf-sec">
     <div class="pf-lbl">Label / Question *</div>
-    <textarea class="pf-ta" id="pf_qtext" rows="3" placeholder="Enter question or label…">${isEdit?esc(qdata.question_text):''}</textarea>
+    <div id="pf_qtext_editor"></div>
+    <input type="hidden" id="pf_qtext">
   </div>`;
 
   // ── Question Image (optional — all types except Image-Based / type 5) ──
@@ -552,6 +567,31 @@ function buildForm(type, qdata){
   document.getElementById('propsEmpty').style.display='none';
   document.getElementById('propsBody').innerHTML=
     '<div class="props-empty" id="propsEmpty" style="display:none"></div>'+h;
+
+  // ── Init Quill WYSIWYG editor ──
+  if(window._activeQuill){ window._activeQuill = null; }
+  setTimeout(function(){
+    var editorEl = document.getElementById('pf_qtext_editor');
+    if(!editorEl) return;
+    window._activeQuill = new Quill('#pf_qtext_editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          [{ header: [1, 2, 3, false] }],
+          ['bold', 'italic', 'underline'],
+          [{ color: [] }, { background: [] }],
+          [{ size: ['small', false, 'large', 'huge'] }],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['link', 'image'],
+          ['clean']
+        ]
+      },
+      placeholder: 'Enter question or label…'
+    });
+    if(_qtextHtml){
+      window._activeQuill.clipboard.dangerouslyPasteHTML(_qtextHtml);
+    }
+  }, 0);
 
   // Post-render: highlight correct options for existing
   if(isEdit){
@@ -729,7 +769,13 @@ function cancelEdit(){
 // ── Save question ────────────────────────────────
 function saveQ(type,qid){
   var isEdit=qid>0;
-  var qtext=(document.getElementById('pf_qtext')||{value:''}).value.trim();
+  var qtext='';
+  if(window._activeQuill){
+    qtext=window._activeQuill.root.innerHTML.trim();
+    if(qtext==='<p><br></p>'||qtext==='<p></p>') qtext='';
+  } else {
+    qtext=(document.getElementById('pf_qtext')||{value:''}).value.trim();
+  }
   var marks=parseInt((document.getElementById('pf_marks')||{value:0}).value)||0;
   if(!qtext){ showToast('Question text is required','error'); return; }
   if(marks<1){ showToast('Marks must be at least 1','error'); return; }

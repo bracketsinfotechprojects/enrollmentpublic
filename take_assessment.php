@@ -154,7 +154,7 @@ function getQuestionTypeName($type) {
                                                 <div class="mb-3">
                                                     <label class="form-label fw-bold">
                                                         <span class="badge bg-primary me-2">Q<?php echo $index + 1; ?></span>
-                                                        <?php echo htmlspecialchars($q['question_text']); ?>
+                                                        <?php echo $q['question_text']; ?>
                                                         <span class="text-muted ms-2">(<?php echo $q['marks']; ?> 
                                                         <?php if($q['marks'] =='1'){
                                                             echo "mark";
@@ -383,9 +383,22 @@ function getQuestionTypeName($type) {
             var totalQuestions = <?php echo count($questions); ?>;
             var answeredQuestions = new Set();
             
-            // Timer
+            // Timer — persists across refreshes using localStorage start timestamp
             var durationMinutes = <?php echo intval($assessment['duration'] ?? 60); ?>;
-            var timeRemaining = durationMinutes * 60;
+            var totalSeconds    = durationMinutes * 60;
+            var timerKey        = 'assess_timer_<?php echo $assessment_id; ?>_<?php echo $student_enrol_id; ?>';
+
+            var startTs = localStorage.getItem(timerKey);
+            if (!startTs) {
+                startTs = Math.floor(Date.now() / 1000);
+                localStorage.setItem(timerKey, startTs);
+            } else {
+                startTs = parseInt(startTs, 10);
+            }
+
+            var elapsed = Math.floor(Date.now() / 1000) - startTs;
+            var timeRemaining = Math.max(0, totalSeconds - elapsed);
+
             var timerInterval = setInterval(function() {
                 var minutes = Math.floor(timeRemaining / 60);
                 var seconds = timeRemaining % 60;
@@ -403,6 +416,7 @@ function getQuestionTypeName($type) {
                 
                 if(timeRemaining == 0) {
                     clearInterval(timerInterval);
+                    localStorage.removeItem(timerKey);
                     showToast('Time is up! Submitting assessment...', 'error');
                     submitAssessment();
                 }
@@ -576,6 +590,7 @@ function getQuestionTypeName($type) {
                     dataType: 'json',
                     success: function(response) {
                         if(response.success){
+                            localStorage.removeItem(timerKey);
                             var msg = 'Assessment submitted successfully!';
                             if(response.attempted_questions !== undefined){
                                 msg += '\nAttempted: ' + response.attempted_questions + ' questions';

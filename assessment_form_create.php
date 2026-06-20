@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
 
         if ($ins) {
-            header('Location: assessment_new.php?created=1');
+            header('Location: assessment_list.php?created=1');
             exit;
         } else {
             $error = 'Database error: ' . mysqli_error($connection);
@@ -296,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <button type="submit" class="cf-btn-create">
                                     <i class="ti ti-arrow-right"></i> Create Assessment
                                 </button>
-                                <a href="assessment_new.php" class="cf-btn-cancel">Cancel</a>
+                                <a href="assessment_list.php" class="cf-btn-cancel">Cancel</a>
                             </div>
 
                         </div><!-- /.cf-card -->
